@@ -64,7 +64,14 @@ export async function semanticSearch(
   });
 
   if (error) throw new Error(`semanticSearch failed: ${error.message}`);
-  return (data ?? []) as SearchResult[];
+
+  // Deduplicate: keep best-scoring chunk per document (safety net)
+  const seen = new Set<number>();
+  return ((data ?? []) as SearchResult[]).filter(r => {
+    if (seen.has(r.document_id)) return false;
+    seen.add(r.document_id);
+    return true;
+  });
 }
 
 export async function listDocuments(): Promise<Array<{
