@@ -8,6 +8,35 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
 
+<!-- ═══════════════════ CHAT MODAL ═══════════════════ -->
+<div id="chatModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="chatBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col" style="height:80vh">
+    <!-- Header -->
+    <div class="flex items-start justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+      <div class="pr-8">
+        <p class="text-xs text-gray-400 mb-0.5">Chatting with</p>
+        <h2 id="chatDocTitle" class="text-sm font-bold text-gray-800 truncate max-w-md"></h2>
+      </div>
+      <button id="chatClose" class="text-gray-400 hover:text-gray-700 text-lg leading-none shrink-0">✕</button>
+    </div>
+    <!-- Messages -->
+    <div id="chatMessages" class="flex-1 overflow-y-auto px-5 py-4 space-y-4"></div>
+    <!-- Input -->
+    <div class="px-5 py-4 border-t border-gray-100 shrink-0">
+      <div class="flex gap-2">
+        <input id="chatInput" type="text" placeholder="Ask a question about this document…"
+          class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <button id="chatSendBtn"
+          class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-sm font-medium px-4 py-2 rounded-lg transition shrink-0">
+          Send
+        </button>
+      </div>
+      <p class="text-xs text-gray-400 mt-1.5">Powered by <span id="chatModelLabel" class="font-medium"></span></p>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════ DOC VIEWER MODAL ═══════════════════ -->
 <div id="viewerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
   <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="viewerBackdrop"></div>
@@ -18,7 +47,13 @@
         <h2 id="viewerTitle" class="text-sm font-bold text-gray-800 break-all"></h2>
         <p id="viewerMeta" class="text-xs text-gray-400 mt-0.5"></p>
       </div>
-      <button id="viewerClose" class="text-gray-400 hover:text-gray-700 text-lg leading-none shrink-0">✕</button>
+      <div class="flex items-center gap-3 shrink-0">
+        <button id="viewerChatBtn"
+          class="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium px-3 py-1.5 rounded-lg transition">
+          💬 Chat
+        </button>
+        <button id="viewerClose" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+      </div>
     </div>
     <!-- Content -->
     <div class="flex-1 overflow-y-auto px-6 py-4">
@@ -817,7 +852,13 @@ document.getElementById('viewerClose').addEventListener('click', closeViewer);
 document.getElementById('viewerBackdrop').addEventListener('click', closeViewer);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
 
+let viewerDocId   = null;
+let viewerDocName = '';
+
 async function openDocViewer(documentId, filename, meta) {
+  viewerDocId   = documentId;
+  viewerDocName = filename;
+
   const modal   = document.getElementById('viewerModal');
   const loading = document.getElementById('viewerLoading');
   const content = document.getElementById('viewerContent');
@@ -837,6 +878,97 @@ async function openDocViewer(documentId, filename, meta) {
   content.textContent = data.content || '(no content)';
   content.classList.remove('hidden');
 }
+
+document.getElementById('viewerChatBtn').addEventListener('click', () => {
+  if (viewerDocId) {
+    closeViewer();
+    openChat(viewerDocId, viewerDocName);
+  }
+});
+
+// ── Chat modal ─────────────────────────────────────────────────────────────
+let chatDocId   = null;
+let chatDocName = '';
+let chatHistory = [];   // [{role, content}]
+
+function closeChat() {
+  document.getElementById('chatModal').classList.add('hidden');
+}
+document.getElementById('chatClose').addEventListener('click', closeChat);
+document.getElementById('chatBackdrop').addEventListener('click', closeChat);
+
+function openChat(documentId, filename) {
+  chatDocId   = documentId;
+  chatDocName = filename;
+  chatHistory = [];
+
+  document.getElementById('chatDocTitle').textContent = filename;
+  document.getElementById('chatModelLabel').textContent =
+    (window.__CHAT_MODEL__ || 'deepseek/deepseek-chat-v3-0324').split('/').pop();
+  document.getElementById('chatMessages').innerHTML = `
+    <div class="text-xs text-gray-400 text-center py-2">Ask anything about this document</div>`;
+  document.getElementById('chatInput').value = '';
+  document.getElementById('chatModal').classList.remove('hidden');
+  document.getElementById('chatInput').focus();
+}
+
+function appendChatMessage(role, text, loading = false) {
+  const box  = document.getElementById('chatMessages');
+  const div  = document.createElement('div');
+  const isMe = role === 'user';
+  div.className = `flex ${isMe ? 'justify-end' : 'justify-start'}`;
+  div.innerHTML = `
+    <div class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+      isMe
+        ? 'bg-blue-600 text-white rounded-br-sm'
+        : 'bg-gray-100 text-gray-800 rounded-bl-sm'
+    } ${loading ? 'animate-pulse' : ''}">
+      ${loading ? '…' : text.replace(/\n/g, '<br>')}
+    </div>`;
+  if (loading) div.id = 'chatThinkingBubble';
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  const msg   = input.value.trim();
+  if (!msg || !chatDocId) return;
+
+  input.value = '';
+  document.getElementById('chatSendBtn').disabled = true;
+
+  appendChatMessage('user', msg);
+  const thinkingDiv = appendChatMessage('assistant', '', true);
+
+  try {
+    const res = await apiFetch(`/api/documents/${chatDocId}/chat`, {
+      method:  'POST',
+      headers: { ...authHdr(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message: msg, filename: chatDocName, history: chatHistory }),
+    });
+
+    const data = res ? await res.json() : { error: 'Request failed' };
+    const answer = data.answer || data.error || 'No response';
+
+    thinkingDiv.remove();
+    appendChatMessage('assistant', answer);
+    chatHistory.push({ role: 'user', content: msg });
+    chatHistory.push({ role: 'assistant', content: answer });
+  } catch (err) {
+    thinkingDiv.remove();
+    appendChatMessage('assistant', `Error: ${err.message}`);
+  }
+
+  document.getElementById('chatSendBtn').disabled = false;
+  document.getElementById('chatInput').focus();
+}
+
+document.getElementById('chatSendBtn').addEventListener('click', sendChatMessage);
+document.getElementById('chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+});
 
 // ════════════════════════════════════════════════
 //  Search tab
@@ -895,14 +1027,28 @@ async function doSearch() {
       </div>
       <p class="text-xs text-gray-400 mb-3">${meta}</p>
       <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${r.content.slice(0, 600)}${r.content.length > 600 ? '…' : ''}</p>
-      <p class="text-xs text-blue-500 mt-3">Click to open full document →</p>
+      <div class="flex items-center gap-3 mt-3">
+        <span class="text-xs text-blue-500">Click to read →</span>
+        <button class="chat-btn text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-medium px-3 py-1 rounded-full transition"
+          data-doc-id="${r.document_id}" data-filename="${r.filename.replace(/"/g,'&quot;')}">
+          💬 Chat
+        </button>
+      </div>
     </div>`;
   }).join('');
 
   resultsEl.querySelectorAll('[data-doc-id]').forEach(card => {
-    card.addEventListener('click', () =>
-      openDocViewer(card.dataset.docId, card.dataset.filename, card.dataset.meta)
-    );
+    card.addEventListener('click', e => {
+      if (e.target.closest('.chat-btn')) return; // handled separately
+      openDocViewer(card.dataset.docId, card.dataset.filename, card.dataset.meta);
+    });
+  });
+
+  resultsEl.querySelectorAll('.chat-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openChat(btn.dataset.docId, btn.dataset.filename);
+    });
   });
 }
 

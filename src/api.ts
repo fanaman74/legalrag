@@ -4,6 +4,7 @@ import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import { listDocuments, deleteDocument, semanticSearch, getDocumentContent } from './supabase.js';
+import { chatWithDocument } from './chat.js';
 import { ingestDocument, parsePdf, parseDocx, parseEml, parseMsg } from './ingest.js';
 import { embedText } from './embeddings.js';
 import type { SourceType } from './types.js';
@@ -71,6 +72,32 @@ router.get('/documents/:id/content', requireAuth, async (req, res) => {
     const doc = await getDocumentContent(id);
     if (!doc) { res.status(404).json({ error: 'Document not found' }); return; }
     res.json(doc);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── POST /api/documents/:id/chat ──────────────────────────────────────────
+router.post('/documents/:id/chat', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
+
+  const { message, filename, history } = req.body as {
+    message?: string;
+    filename?: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  };
+
+  if (!message?.trim()) { res.status(400).json({ error: 'message is required' }); return; }
+
+  try {
+    const answer = await chatWithDocument(
+      id,
+      filename ?? `Document ${id}`,
+      message.trim(),
+      history ?? []
+    );
+    res.json({ answer });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
