@@ -85,7 +85,7 @@
 
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
           <!-- Hidden inputs — triggered by labels below -->
-          <input id="fileInput"   type="file" multiple accept=".pdf,.docx,.txt,.eml,.msg"
+          <input id="fileInput"   type="file" multiple accept=".pdf,.docx,.txt,.md,.eml,.msg"
             class="sr-only" />
           <input id="folderInput" type="file" webkitdirectory multiple
             class="sr-only" />
@@ -108,7 +108,7 @@
           <div id="dropZone"
             class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center hover:border-blue-400 hover:bg-blue-50 transition">
             <p class="text-gray-500 text-sm">Or drag &amp; drop files / folders here</p>
-            <p class="text-xs text-gray-400 mt-1">PDF · DOCX · TXT · EML · MSG</p>
+            <p class="text-xs text-gray-400 mt-1">PDF · DOCX · TXT · MD · EML · MSG</p>
           </div>
 
           <p id="selectedCount" class="mt-2 text-sm text-gray-500 hidden"></p>
@@ -313,7 +313,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ════════════════════════════════════════════════
 //  Upload tab
 // ════════════════════════════════════════════════
-const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.eml', '.msg']);
+const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.eml', '.msg']);
 let selectedFiles  = [];
 
 function extOf(name) { return name.slice(name.lastIndexOf('.')).toLowerCase(); }

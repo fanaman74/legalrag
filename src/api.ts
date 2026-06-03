@@ -15,7 +15,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.eml', '.msg']);
+const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.eml', '.msg']);
 
 function getSecret(): string {
   const s = process.env.ADMIN_PASSWORD;
