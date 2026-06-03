@@ -133,6 +133,8 @@
 
         <!-- Filters -->
         <div class="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-4">
+          <!-- Folder chips -->
+          <div id="folderChips" class="flex flex-wrap gap-2 mb-2 empty:hidden"></div>
           <!-- Source type chips — populated dynamically -->
           <div id="typeChips" class="flex flex-wrap gap-2 mb-3 empty:hidden"></div>
           <!-- Case + Date text filters -->
@@ -288,7 +290,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ════════════════════════════════════════════════
 const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.eml', '.msg']);
 let selectedFiles  = [];
-let batchMeta      = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+let batchMeta      = { sourceType: 'Other', folder: '', caseNumber: '', date: '', language: 'en' };
 
 function extOf(name) { return name.slice(name.lastIndexOf('.')).toLowerCase(); }
 
@@ -328,28 +330,63 @@ function parseFolderMetadata(folderName) {
   return result;
 }
 
+// Per-file metadata derived from its webkitRelativePath
+// e.g. "01_CORE_DOCUMENTS/Chronologies/doc.pdf"
+//   → sourceType: "Chronologies", folder: "01 Core Documents"
+function metaFromPath(file) {
+  const path  = file.webkitRelativePath || '';
+  const parts = path.split('/').filter(Boolean);
+  // parts[-1] = filename, parts[-2] = immediate folder, parts[0] = root folder
+  if (parts.length >= 3) {
+    const leafFolder   = parts[parts.length - 2];
+    const parentFolder = parts[0];
+    const meta         = parseFolderMetadata(leafFolder);
+    return {
+      sourceType: meta.sourceType || 'Other',
+      folder:     folderToSourceType(parentFolder),
+      caseNumber: meta.caseNumber || '',
+      date:       meta.date       || '',
+      language:   meta.language   || 'en',
+    };
+  } else if (parts.length === 2) {
+    const meta = parseFolderMetadata(parts[0]);
+    return { sourceType: meta.sourceType || 'Other', folder: '', caseNumber: meta.caseNumber || '', date: meta.date || '', language: meta.language || 'en' };
+  }
+  return { ...batchMeta };
+}
+
 function applyFolderMetadata(files) {
   if (!files.length) return;
-  const firstPath  = files[0].webkitRelativePath || '';
-  const folderName = firstPath.split('/')[0];
-  if (!folderName) return;
-
-  const meta = parseFolderMetadata(folderName);
-
-  batchMeta = {
-    sourceType: meta.sourceType || 'Other',
-    caseNumber: meta.caseNumber || '',
-    date:       meta.date       || '',
-    language:   meta.language   || 'en',
-  };
-
-  const parts = [meta.sourceType];
-  if (meta.caseNumber) parts.push(meta.caseNumber);
-  if (meta.date)       parts.push(meta.date);
-  if (meta.language)   parts.push(meta.language.toUpperCase());
-
   const detectedEl = document.getElementById('folderDetected');
-  detectedEl.textContent = `Detected from "${folderName}": ${parts.join(' · ')}`;
+
+  // Sample first file path to show what will be detected
+  const samplePath  = files[0].webkitRelativePath || '';
+  const parts       = samplePath.split('/').filter(Boolean);
+
+  if (parts.length >= 3) {
+    // Nested structure — each file will get its subfolder as source type
+    const rootFolder  = folderToSourceType(parts[0]);
+    const subFolders  = [...new Set(
+      Array.from(files)
+        .map(f => f.webkitRelativePath.split('/').filter(Boolean))
+        .filter(p => p.length >= 3)
+        .map(p => folderToSourceType(p[p.length - 2]))
+    )];
+    detectedEl.textContent = `"${rootFolder}" → ${subFolders.join(', ')} (per-subfolder tagging)`;
+    // batchMeta is fallback only — real metadata comes from metaFromPath per file
+    batchMeta = { sourceType: subFolders[0] || 'Other', folder: rootFolder, caseNumber: '', date: '', language: 'en' };
+  } else if (parts.length === 2) {
+    const meta = parseFolderMetadata(parts[0]);
+    batchMeta  = { sourceType: meta.sourceType || 'Other', folder: '', caseNumber: meta.caseNumber || '', date: meta.date || '', language: meta.language || 'en' };
+    const pts  = [meta.sourceType];
+    if (meta.caseNumber) pts.push(meta.caseNumber);
+    if (meta.date)       pts.push(meta.date);
+    detectedEl.textContent = `Detected from "${parts[0]}": ${pts.join(' · ')}`;
+  } else {
+    detectedEl.classList.add('hidden');
+    return;
+  }
+
   detectedEl.classList.remove('hidden');
 }
 
@@ -394,13 +431,13 @@ const dropZone    = document.getElementById('dropZone');
 // Clear state when a new selection is made.
 fileInput.addEventListener('change', () => {
   selectedFiles = [];
-  batchMeta     = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+  batchMeta     = { sourceType: 'Other', folder: '', caseNumber: '', date: '', language: 'en' };
   document.getElementById('folderDetected').classList.add('hidden');
   applyFiles(fileInput.files);
 });
 folderInput.addEventListener('change', () => {
   selectedFiles = [];
-  batchMeta     = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+  batchMeta     = { sourceType: 'Other', folder: '', caseNumber: '', date: '', language: 'en' };
   applyFiles(folderInput.files);
   applyFolderMetadata(Array.from(folderInput.files));
 });
@@ -430,7 +467,7 @@ document.getElementById('modalClose').addEventListener('click', closeModal);
 document.getElementById('uploadBtn').addEventListener('click', async () => {
   if (selectedFiles.length === 0) return;
 
-  const { sourceType, caseNumber, date: docDate, language } = batchMeta;
+  // batchMeta used as fallback; per-file meta resolved inside the loop
 
   document.getElementById('uploadBtn').disabled = true;
   openModal();
@@ -465,12 +502,14 @@ document.getElementById('uploadBtn').addEventListener('click', async () => {
     progress.textContent  = `File ${done + 1} of ${total} — ${file.name}`;
 
     try {
+      const fm = metaFromPath(file);
       const fd = new FormData();
       fd.append('file', file, file.name);
-      fd.append('source_type', sourceType);
-      if (caseNumber) fd.append('case_number', caseNumber);
-      if (docDate)    fd.append('document_date', docDate);
-      fd.append('language', language);
+      fd.append('source_type', fm.sourceType);
+      if (fm.folder)     fd.append('folder',        fm.folder);
+      if (fm.caseNumber) fd.append('case_number',   fm.caseNumber);
+      if (fm.date)       fd.append('document_date', fm.date);
+      fd.append('language', fm.language);
 
       const res  = await fetch('/api/ingest', { method: 'POST', headers: authHdr(), body: fd });
       const data = await res.json();
@@ -507,7 +546,7 @@ document.getElementById('uploadBtn').addEventListener('click', async () => {
   document.getElementById('modalClose').classList.remove('hidden');
   bar.classList.replace('bg-blue-500', failed > 0 ? 'bg-yellow-400' : 'bg-green-500');
 
-  selectedFiles = []; batchMeta = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+  selectedFiles = []; batchMeta = { sourceType: 'Other', folder: '', caseNumber: '', date: '', language: 'en' };
   fileInput.value = ''; folderInput.value = '';
   document.getElementById('folderDetected').classList.add('hidden');
   refreshFileUI();
@@ -516,39 +555,54 @@ document.getElementById('uploadBtn').addEventListener('click', async () => {
 // ════════════════════════════════════════════════
 //  Documents tab
 // ════════════════════════════════════════════════
-let allDocs          = [];
-let activeTypeFilter = new Set();   // selected source-type chips
+let allDocs            = [];
+let activeTypeFilter   = new Set();   // selected source-type chips
+let activeFolderFilter = new Set();   // selected folder chips
+
+function makeChip(label, activeSet, color, onToggle) {
+  const btn = document.createElement('button');
+  const on  = activeSet.has(label);
+  btn.textContent = label;
+  btn.className   = `px-3 py-1 rounded-full text-xs font-medium transition select-none ${
+    on ? `${color} text-white` : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+  }`;
+  btn.addEventListener('click', onToggle);
+  return btn;
+}
 
 function buildTypeChips() {
+  // Folder chips (blue-700)
+  const folders   = [...new Set(allDocs.map(d => d.folder).filter(Boolean))].sort();
+  const folderBox = document.getElementById('folderChips');
+  folderBox.innerHTML = '';
+  folders.forEach(f => {
+    folderBox.appendChild(makeChip(f, activeFolderFilter, 'bg-blue-700', () => {
+      if (activeFolderFilter.has(f)) activeFolderFilter.delete(f);
+      else activeFolderFilter.add(f);
+      buildTypeChips(); renderDocuments();
+    }));
+  });
+
+  // Source type chips (blue-500)
   const types     = [...new Set(allDocs.map(d => d.source_type).filter(Boolean))].sort();
   const container = document.getElementById('typeChips');
   container.innerHTML = '';
   types.forEach(t => {
-    const btn = document.createElement('button');
-    const on  = activeTypeFilter.has(t);
-    btn.textContent = t;
-    btn.className   = `px-3 py-1 rounded-full text-xs font-medium transition select-none ${
-      on ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-    }`;
-    btn.addEventListener('click', () => {
+    container.appendChild(makeChip(t, activeTypeFilter, 'bg-blue-500', () => {
       if (activeTypeFilter.has(t)) activeTypeFilter.delete(t);
       else activeTypeFilter.add(t);
-      buildTypeChips();
-      renderDocuments();
-    });
-    container.appendChild(btn);
+      buildTypeChips(); renderDocuments();
+    }));
   });
 
-  // Mirror chips in search tab
+  // Mirror in search tab
   const searchChips = document.getElementById('searchTypeChips');
   searchChips.innerHTML = '';
   types.forEach(t => {
     const btn = document.createElement('button');
     btn.textContent = t;
     btn.className   = 'px-2.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600 hover:bg-blue-100 hover:text-blue-700 transition';
-    btn.addEventListener('click', () => {
-      document.getElementById('searchSourceType').value = t;
-    });
+    btn.addEventListener('click', () => { document.getElementById('searchSourceType').value = t; });
     searchChips.appendChild(btn);
   });
 }
@@ -560,13 +614,14 @@ function renderDocuments() {
   const countEl    = document.getElementById('docsFilterCount');
 
   const filtered = allDocs.filter(doc => {
-    if (activeTypeFilter.size && !activeTypeFilter.has(doc.source_type)) return false;
+    if (activeFolderFilter.size && !activeFolderFilter.has(doc.folder)) return false;
+    if (activeTypeFilter.size  && !activeTypeFilter.has(doc.source_type)) return false;
     if (filterCase && !(doc.case_number || '').toLowerCase().includes(filterCase)) return false;
     if (filterDate && !(doc.document_date || '').includes(filterDate)) return false;
     return true;
   });
 
-  const isFiltered = activeTypeFilter.size || filterCase || filterDate;
+  const isFiltered = activeFolderFilter.size || activeTypeFilter.size || filterCase || filterDate;
   if (isFiltered) {
     countEl.textContent = `${filtered.length} of ${allDocs.length} shown`;
     countEl.classList.remove('hidden');
@@ -588,6 +643,7 @@ function renderDocuments() {
           <tr>
             <th class="px-4 py-3 text-left">ID</th>
             <th class="px-4 py-3 text-left">Filename</th>
+            <th class="px-4 py-3 text-left">Folder</th>
             <th class="px-4 py-3 text-left">Type</th>
             <th class="px-4 py-3 text-left">Case</th>
             <th class="px-4 py-3 text-left">Date</th>
@@ -610,7 +666,10 @@ function renderDocuments() {
         <span class="block truncate" title="${doc.filename}">${doc.filename}</span>
       </td>
       <td class="px-4 py-3">
-        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${doc.source_type.replace(/_/g, ' ')}</span>
+        ${doc.folder ? `<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">${doc.folder}</span>` : '<span class="text-gray-300 text-xs">n/a</span>'}
+      </td>
+      <td class="px-4 py-3">
+        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${doc.source_type}</span>
       </td>
       <td class="px-4 py-3 text-gray-500">${doc.case_number   || '<span class="text-gray-300">n/a</span>'}</td>
       <td class="px-4 py-3 text-gray-500">${doc.document_date || '<span class="text-gray-300">n/a</span>'}</td>
@@ -644,6 +703,7 @@ async function loadDocuments() {
 
   allDocs = await res.json();
   activeTypeFilter.clear();
+  activeFolderFilter.clear();
   buildTypeChips();
   renderDocuments();
 }
@@ -653,6 +713,7 @@ document.getElementById('docsFilterCase').addEventListener('input',  renderDocum
 document.getElementById('docsFilterDate').addEventListener('input',  renderDocuments);
 document.getElementById('docsClearFilters').addEventListener('click', () => {
   activeTypeFilter.clear();
+  activeFolderFilter.clear();
   document.getElementById('docsFilterCase').value = '';
   document.getElementById('docsFilterDate').value = '';
   buildTypeChips();

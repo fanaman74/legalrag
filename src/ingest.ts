@@ -8,6 +8,7 @@ export interface IngestOptions {
   filename: string;
   rawText: string;
   sourceType: SourceType;
+  folder?: string;
   caseNumber?: string;
   documentDate?: string;
   language?: 'en' | 'fr';
@@ -56,7 +57,7 @@ export function extractDateFromText(text: string): string | undefined {
 }
 
 export async function ingestDocument(opts: IngestOptions): Promise<IngestResult> {
-  const { filename, rawText, sourceType, caseNumber, language } = opts;
+  const { filename, rawText, sourceType, folder, caseNumber, language } = opts;
   const documentDate = opts.documentDate || extractDateFromText(rawText);
   const { upsertDocument, insertChunks } = await import('./supabase.js');
 
@@ -68,6 +69,7 @@ export async function ingestDocument(opts: IngestOptions): Promise<IngestResult>
     filename,
     content_hash:  contentHash,
     source_type:   sourceType,
+    folder:        folder,
     case_number:   caseNumber,
     document_date: documentDate,
     language:      language ?? 'en',

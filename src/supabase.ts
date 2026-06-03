@@ -15,6 +15,7 @@ export async function upsertDocument(doc: {
   filename: string;
   content_hash: string;
   source_type: string;
+  folder?: string;
   case_number?: string;
   document_date?: string;
   language?: string;
@@ -70,6 +71,7 @@ export async function listDocuments(): Promise<Array<{
   id: number;
   filename: string;
   source_type: string;
+  folder: string | null;
   case_number: string | null;
   document_date: string | null;
   total_chunks: number;
@@ -77,7 +79,7 @@ export async function listDocuments(): Promise<Array<{
 }>> {
   const { data, error } = await supabase
     .from('documents')
-    .select('id, filename, source_type, case_number, document_date, total_chunks, created_at')
+    .select('id, filename, source_type, folder, case_number, document_date, total_chunks, created_at')
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(`listDocuments failed: ${error.message}`);
@@ -85,6 +87,7 @@ export async function listDocuments(): Promise<Array<{
     id: number;
     filename: string;
     source_type: string;
+    folder: string | null;
     case_number: string | null;
     document_date: string | null;
     total_chunks: number;

@@ -5,6 +5,7 @@ export interface DocumentRecord {
   filename: string;
   content_hash: string;
   source_type: SourceType;
+  folder?: string;
   case_number?: string;
   document_date?: string;
   language?: 'en' | 'fr';

@@ -85,8 +85,9 @@ router.post('/ingest', requireAuth, upload.single('file'), async (req, res) => {
     return;
   }
 
-  const { source_type, case_number, document_date, language } = req.body as {
+  const { source_type, folder, case_number, document_date, language } = req.body as {
     source_type?: string;
+    folder?: string;
     case_number?: string;
     document_date?: string;
     language?: string;
@@ -117,7 +118,8 @@ router.post('/ingest', requireAuth, upload.single('file'), async (req, res) => {
       filename:     req.file.originalname,
       rawText,
       sourceType:   source_type as SourceType,
-      caseNumber:   case_number  || undefined,
+      folder:       folder        || undefined,
+      caseNumber:   case_number   || undefined,
       documentDate: document_date || undefined,
       language:     (language as 'en' | 'fr') ?? 'en',
     });
