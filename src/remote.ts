@@ -2,6 +2,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { join, dirname } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
@@ -11,11 +13,30 @@ import {
   deleteDocumentSchema,  handleDeleteDocument,
   handleListDocuments,
 } from './tools.js';
+import apiRouter from './api.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
+// ─── REST API ────────────────────────────────────────────────────────────────
+app.use('/api', apiRouter);
+
+// ─── Static frontend ─────────────────────────────────────────────────────────
+app.use(express.static(join(__dirname, '..', 'public')));
+app.get('*', (req, res) => {
+  if (
+    !req.path.startsWith('/api') &&
+    !req.path.startsWith('/sse') &&
+    !req.path.startsWith('/messages')
+  ) {
+    res.sendFile(join(__dirname, '..', 'public', 'index.html'));
+  }
+});
+
+// ─── MCP / SSE ───────────────────────────────────────────────────────────────
 function buildMcpServer(): McpServer {
   const server = new McpServer({ name: 'legal-doc-rag', version: '1.0.0' });
 
