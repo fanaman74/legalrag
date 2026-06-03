@@ -128,7 +128,12 @@
       <div id="tab-documents" class="hidden">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-base font-semibold text-gray-800">Indexed Documents</h2>
-          <button id="refreshDocsBtn" class="text-sm text-blue-600 hover:text-blue-800">↻ Refresh</button>
+          <div class="flex items-center gap-3">
+            <button id="deleteSelectedBtn" class="hidden bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-1.5 rounded-lg transition">
+              Delete selected (<span id="deleteSelectedCount">0</span>)
+            </button>
+            <button id="refreshDocsBtn" class="text-sm text-blue-600 hover:text-blue-800">↻ Refresh</button>
+          </div>
         </div>
 
         <!-- Filters -->
@@ -556,8 +561,24 @@ document.getElementById('uploadBtn').addEventListener('click', async () => {
 //  Documents tab
 // ════════════════════════════════════════════════
 let allDocs            = [];
-let activeTypeFilter   = new Set();   // selected source-type chips
-let activeFolderFilter = new Set();   // selected folder chips
+let activeTypeFilter   = new Set();
+let activeFolderFilter = new Set();
+let selectedDocIds     = new Set();
+
+function updateSelectionUI() {
+  const count   = selectedDocIds.size;
+  const btn     = document.getElementById('deleteSelectedBtn');
+  const countEl = document.getElementById('deleteSelectedCount');
+  btn.classList.toggle('hidden', count === 0);
+  countEl.textContent = count;
+
+  // Sync select-all checkbox state
+  const allChk = document.getElementById('selectAllChk');
+  if (!allChk) return;
+  const rowChks = document.querySelectorAll('.row-chk');
+  allChk.indeterminate = count > 0 && count < rowChks.length;
+  allChk.checked       = rowChks.length > 0 && count === rowChks.length;
+}
 
 function makeChip(label, activeSet, color, onToggle) {
   const btn = document.createElement('button');
@@ -641,7 +662,9 @@ function renderDocuments() {
       <table class="w-full text-sm">
         <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
           <tr>
-            <th class="px-4 py-3 text-left">ID</th>
+            <th class="px-4 py-3 text-left w-8">
+              <input type="checkbox" id="selectAllChk" class="accent-blue-600 cursor-pointer" title="Select all" />
+            </th>
             <th class="px-4 py-3 text-left">Filename</th>
             <th class="px-4 py-3 text-left">Folder</th>
             <th class="px-4 py-3 text-left">Type</th>
@@ -661,7 +684,9 @@ function renderDocuments() {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-gray-50';
     tr.innerHTML = `
-      <td class="px-4 py-3 text-gray-400">${doc.id}</td>
+      <td class="px-4 py-3 w-8">
+        <input type="checkbox" class="row-chk accent-blue-600 cursor-pointer" data-id="${doc.id}" />
+      </td>
       <td class="px-4 py-3 font-medium text-gray-800 max-w-xs">
         <span class="block truncate" title="${doc.filename}">${doc.filename}</span>
       </td>
@@ -685,13 +710,36 @@ function renderDocuments() {
   tbody.querySelectorAll('.delete-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm(`Delete "${btn.dataset.name}" and all its chunks? This cannot be undone.`)) return;
-      const res = await apiFetch(`/api/documents/${btn.dataset.id}`, {
-        method:  'DELETE',
-        headers: authHdr(),
-      });
+      const res = await apiFetch(`/api/documents/${btn.dataset.id}`, { method: 'DELETE', headers: authHdr() });
       if (res) loadDocuments();
     });
   });
+
+  // Row checkboxes
+  tbody.querySelectorAll('.row-chk').forEach(chk => {
+    const id = parseInt(chk.dataset.id);
+    chk.checked = selectedDocIds.has(id);
+    chk.addEventListener('change', () => {
+      if (chk.checked) selectedDocIds.add(id);
+      else             selectedDocIds.delete(id);
+      updateSelectionUI();
+    });
+  });
+
+  // Select-all
+  const allChk = document.getElementById('selectAllChk');
+  if (allChk) {
+    allChk.addEventListener('change', () => {
+      document.querySelectorAll('.row-chk').forEach(chk => {
+        chk.checked = allChk.checked;
+        const id = parseInt(chk.dataset.id);
+        if (allChk.checked) selectedDocIds.add(id);
+        else                selectedDocIds.delete(id);
+      });
+      updateSelectionUI();
+    });
+  }
+  updateSelectionUI();
 }
 
 async function loadDocuments() {
@@ -704,11 +752,29 @@ async function loadDocuments() {
   allDocs = await res.json();
   activeTypeFilter.clear();
   activeFolderFilter.clear();
+  selectedDocIds.clear();
   buildTypeChips();
   renderDocuments();
 }
 
 document.getElementById('refreshDocsBtn').addEventListener('click', loadDocuments);
+
+document.getElementById('deleteSelectedBtn').addEventListener('click', async () => {
+  const ids = [...selectedDocIds];
+  if (!ids.length) return;
+  if (!confirm(`Permanently delete ${ids.length} document${ids.length !== 1 ? 's' : ''} and all their chunks?`)) return;
+
+  const btn = document.getElementById('deleteSelectedBtn');
+  btn.textContent = 'Deleting…';
+  btn.disabled    = true;
+
+  await Promise.all(ids.map(id =>
+    apiFetch(`/api/documents/${id}`, { method: 'DELETE', headers: authHdr() })
+  ));
+
+  selectedDocIds.clear();
+  loadDocuments();
+});
 document.getElementById('docsFilterCase').addEventListener('input',  renderDocuments);
 document.getElementById('docsFilterDate').addEventListener('input',  renderDocuments);
 document.getElementById('docsClearFilters').addEventListener('click', () => {
