@@ -1,0 +1,43 @@
+{
+  "name": "mylegal-mcp",
+  "version": "1.0.0",
+  "description": "",
+  "engines": {
+    "node": ">=20"
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start:local": "npx tsx src/server.ts",
+    "start:remote": "node dist/remote.js",
+    "ingest": "npx tsx scripts/ingest-file.ts",
+    "dev": "npx tsx --watch src/server.ts",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "@types/pdf-parse": "^1.1.5",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@supabase/supabase-js": "^2.107.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "zod": "^4.4.3"
+  }
+}
