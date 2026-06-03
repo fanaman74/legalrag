@@ -8,6 +8,29 @@
 </head>
 <body class="bg-gray-50 min-h-screen">
 
+<!-- ═══════════════════ DOC VIEWER MODAL ═══════════════════ -->
+<div id="viewerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+  <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="viewerBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 flex flex-col max-h-[85vh]">
+    <!-- Header -->
+    <div class="flex items-start justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+      <div class="pr-8">
+        <h2 id="viewerTitle" class="text-sm font-bold text-gray-800 break-all"></h2>
+        <p id="viewerMeta" class="text-xs text-gray-400 mt-0.5"></p>
+      </div>
+      <button id="viewerClose" class="text-gray-400 hover:text-gray-700 text-lg leading-none shrink-0">✕</button>
+    </div>
+    <!-- Content -->
+    <div class="flex-1 overflow-y-auto px-6 py-4">
+      <div id="viewerLoading" class="flex items-center gap-2 text-gray-400 text-sm">
+        <div class="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+        Loading…
+      </div>
+      <pre id="viewerContent" class="hidden text-xs text-gray-700 leading-relaxed whitespace-pre-wrap font-sans"></pre>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════ INGEST MODAL ═══════════════════ -->
 <div id="ingestModal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
   <!-- Backdrop -->
@@ -787,6 +810,35 @@ document.getElementById('docsClearFilters').addEventListener('click', () => {
 });
 
 // ════════════════════════════════════════════════
+//  Doc viewer modal
+// ════════════════════════════════════════════════
+function closeViewer() { document.getElementById('viewerModal').classList.add('hidden'); }
+document.getElementById('viewerClose').addEventListener('click', closeViewer);
+document.getElementById('viewerBackdrop').addEventListener('click', closeViewer);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeViewer(); });
+
+async function openDocViewer(documentId, filename, meta) {
+  const modal   = document.getElementById('viewerModal');
+  const loading = document.getElementById('viewerLoading');
+  const content = document.getElementById('viewerContent');
+
+  document.getElementById('viewerTitle').textContent = filename;
+  document.getElementById('viewerMeta').textContent  = meta;
+  loading.classList.remove('hidden');
+  content.classList.add('hidden');
+  content.textContent = '';
+  modal.classList.remove('hidden');
+
+  const res  = await apiFetch(`/api/documents/${documentId}/content`, { headers: authHdr() });
+  if (!res) { closeViewer(); return; }
+  const data = await res.json();
+
+  loading.classList.add('hidden');
+  content.textContent = data.content || '(no content)';
+  content.classList.remove('hidden');
+}
+
+// ════════════════════════════════════════════════
 //  Search tab
 // ════════════════════════════════════════════════
 document.getElementById('searchThreshold').addEventListener('input', e => {
@@ -830,20 +882,28 @@ async function doSearch() {
     return;
   }
 
-  resultsEl.innerHTML = results.map(r => `
-    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-4">
+  resultsEl.innerHTML = results.map(r => {
+    const meta = [r.source_type, r.case_number, r.document_date].filter(Boolean).join(' · ');
+    return `
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-4 cursor-pointer hover:border-blue-300 hover:shadow-md transition"
+      data-doc-id="${r.document_id}" data-filename="${r.filename.replace(/"/g,'&quot;')}" data-meta="${meta.replace(/"/g,'&quot;')}">
       <div class="flex items-start justify-between gap-4 mb-1">
         <span class="font-semibold text-gray-800 text-sm truncate">${r.filename}</span>
         <span class="shrink-0 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
           ${(r.similarity * 100).toFixed(1)}% match
         </span>
       </div>
-      <p class="text-xs text-gray-400 mb-3">
-        ${r.source_type}${r.case_number ? ' · ' + r.case_number : ''}${r.document_date ? ' · ' + r.document_date : ''}
-      </p>
+      <p class="text-xs text-gray-400 mb-3">${meta}</p>
       <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${r.content.slice(0, 600)}${r.content.length > 600 ? '…' : ''}</p>
-    </div>
-  `).join('');
+      <p class="text-xs text-blue-500 mt-3">Click to open full document →</p>
+    </div>`;
+  }).join('');
+
+  resultsEl.querySelectorAll('[data-doc-id]').forEach(card => {
+    card.addEventListener('click', () =>
+      openDocViewer(card.dataset.docId, card.dataset.filename, card.dataset.meta)
+    );
+  });
 }
 
 document.getElementById('searchBtn').addEventListener('click', doSearch);

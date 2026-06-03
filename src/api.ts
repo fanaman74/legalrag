@@ -3,7 +3,7 @@ import express from 'express';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import path from 'path';
-import { listDocuments, deleteDocument, semanticSearch } from './supabase.js';
+import { listDocuments, deleteDocument, semanticSearch, getDocumentContent } from './supabase.js';
 import { ingestDocument, parsePdf, parseDocx, parseEml, parseMsg } from './ingest.js';
 import { embedText } from './embeddings.js';
 import type { SourceType } from './types.js';
@@ -58,6 +58,19 @@ router.get('/documents', requireAuth, async (_req, res) => {
   try {
     const docs = await listDocuments();
     res.json(docs);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── GET /api/documents/:id/content ────────────────────────────────────────
+router.get('/documents/:id/content', requireAuth, async (req, res) => {
+  const id = parseInt(req.params.id as string, 10);
+  if (isNaN(id)) { res.status(400).json({ error: 'Invalid document ID' }); return; }
+  try {
+    const doc = await getDocumentContent(id);
+    if (!doc) { res.status(404).json({ error: 'Document not found' }); return; }
+    res.json(doc);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

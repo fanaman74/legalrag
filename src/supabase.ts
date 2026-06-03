@@ -95,6 +95,36 @@ export async function listDocuments(): Promise<Array<{
   }>;
 }
 
+export async function getDocumentContent(documentId: number): Promise<{
+  filename: string;
+  source_type: string;
+  folder: string | null;
+  case_number: string | null;
+  document_date: string | null;
+  content: string;
+} | null> {
+  const { data: doc, error: docErr } = await supabase
+    .from('documents')
+    .select('filename, source_type, folder, case_number, document_date')
+    .eq('id', documentId)
+    .single();
+
+  if (docErr || !doc) return null;
+
+  const { data: chunks, error: chunkErr } = await supabase
+    .from('document_chunks')
+    .select('content, chunk_index')
+    .eq('document_id', documentId)
+    .order('chunk_index');
+
+  if (chunkErr) return null;
+
+  return {
+    ...(doc as any),
+    content: (chunks ?? []).map((c: any) => c.content).join('\n\n'),
+  };
+}
+
 export async function deleteDocument(documentId: number): Promise<void> {
   const { error } = await supabase
     .from('documents')
