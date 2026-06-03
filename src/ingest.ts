@@ -20,8 +20,44 @@ export interface IngestResult {
   message: string;
 }
 
+const MONTH_MAP: Record<string, string> = {
+  january:'01', february:'02', march:'03', april:'04', may:'05', june:'06',
+  july:'07', august:'08', september:'09', october:'10', november:'11', december:'12',
+  janvier:'01', février:'02', mars:'03', avril:'04', mai:'05', juin:'06',
+  juillet:'07', août:'08', septembre:'09', octobre:'10', novembre:'11', décembre:'12',
+};
+
+export function extractDateFromText(text: string): string | undefined {
+  const sample = text.slice(0, 2000);
+
+  // ISO / email header: 2024-03-15 or Date: 2024-03-15
+  const iso = sample.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  // European short: 15/03/2024 or 15.03.2024
+  const eu = sample.match(/\b(\d{1,2})[\/\.](\d{2})[\/\.](\d{4})\b/);
+  if (eu) return `${eu[3]}-${eu[2].padStart(2,'0')}-${eu[1].padStart(2,'0')}`;
+
+  // Written: "15 March 2024" or "15 mars 2024"
+  const written = sample.match(/\b(\d{1,2})\s+([\wé]+)\s+(\d{4})\b/i);
+  if (written) {
+    const m = MONTH_MAP[written[2].toLowerCase()];
+    if (m) return `${written[3]}-${m}-${written[1].padStart(2,'0')}`;
+  }
+
+  // American: "March 15, 2024"
+  const american = sample.match(/\b([\wé]+)\s+(\d{1,2}),?\s+(\d{4})\b/i);
+  if (american) {
+    const m = MONTH_MAP[american[1].toLowerCase()];
+    if (m) return `${american[3]}-${m}-${american[2].padStart(2,'0')}`;
+  }
+
+  return undefined;
+}
+
 export async function ingestDocument(opts: IngestOptions): Promise<IngestResult> {
-  const { filename, rawText, sourceType, caseNumber, documentDate, language } = opts;
+  const { filename, rawText, sourceType, caseNumber, language } = opts;
+  const documentDate = opts.documentDate || extractDateFromText(rawText);
   const { upsertDocument, insertChunks } = await import('./supabase.js');
 
   const contentHash = crypto.createHash('sha256').update(rawText).digest('hex');

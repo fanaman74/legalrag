@@ -111,44 +111,9 @@
             <p class="text-xs text-gray-400 mt-1">PDF · DOCX · TXT · MD · EML · MSG</p>
           </div>
 
-          <p id="selectedCount" class="mt-2 text-sm text-gray-500 hidden"></p>
+          <p id="selectedCount"  class="mt-2 text-sm text-gray-500 hidden"></p>
           <p id="skippedCount"  class="mt-1 text-xs text-amber-500 hidden"></p>
-        </div>
-
-        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
-          <h3 class="text-sm font-semibold text-gray-700 mb-4">Metadata — applies to all files in this batch</h3>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">Source Type *</label>
-              <select id="sourceType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                <option value="olaf_complaint">OLAF Complaint</option>
-                <option value="general_court">General Court</option>
-                <option value="ias_audit">IAS Audit</option>
-                <option value="ep_discharge">EP Discharge</option>
-                <option value="correspondence" selected>Correspondence</option>
-                <option value="staff_regulations">Staff Regulations</option>
-                <option value="decision">Decision</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">Language</label>
-              <select id="language" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                <option value="en">English</option>
-                <option value="fr">French</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">Case Number (optional)</label>
-              <input id="caseNumber" type="text" placeholder="e.g. T-777/25"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">Document Date (optional)</label>
-              <input id="docDate" type="date"
-                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-            </div>
-          </div>
+          <p id="folderDetected" class="mt-1 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hidden"></p>
         </div>
 
         <button id="uploadBtn" disabled
@@ -165,6 +130,37 @@
           <h2 class="text-base font-semibold text-gray-800">Indexed Documents</h2>
           <button id="refreshDocsBtn" class="text-sm text-blue-600 hover:text-blue-800">↻ Refresh</button>
         </div>
+
+        <!-- Filters -->
+        <div class="bg-white rounded-xl border border-gray-200 px-4 py-3 mb-4 flex flex-wrap gap-3 items-end">
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Source Type</label>
+            <select id="docsFilterType" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm">
+              <option value="">All types</option>
+              <option value="olaf_complaint">OLAF Complaint</option>
+              <option value="general_court">General Court</option>
+              <option value="ias_audit">IAS Audit</option>
+              <option value="ep_discharge">EP Discharge</option>
+              <option value="correspondence">Correspondence</option>
+              <option value="staff_regulations">Staff Regulations</option>
+              <option value="decision">Decision</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Case Number</label>
+            <input id="docsFilterCase" type="text" placeholder="e.g. T-777/25"
+              class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-36" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-500 mb-1">Date</label>
+            <input id="docsFilterDate" type="text" placeholder="e.g. 2024"
+              class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-28" />
+          </div>
+          <button id="docsClearFilters" class="text-xs text-gray-400 hover:text-gray-600 pb-1.5">Clear</button>
+          <span id="docsFilterCount" class="text-xs text-gray-400 pb-1.5 ml-auto hidden"></span>
+        </div>
+
         <div id="docsContent">
           <p class="text-gray-400 text-sm">Loading...</p>
         </div>
@@ -315,13 +311,74 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // ════════════════════════════════════════════════
 const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.eml', '.msg']);
 let selectedFiles  = [];
+let batchMeta      = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
 
 function extOf(name) { return name.slice(name.lastIndexOf('.')).toLowerCase(); }
 
+// ── Folder name → metadata detection ─────────────────────────────────────────
+function parseFolderMetadata(folderName) {
+  const s = folderName.toLowerCase().replace(/[-_\s]+/g, '_');
+  const result = {};
+
+  // Source type
+  if      (s.includes('olaf'))                         result.sourceType = 'olaf_complaint';
+  else if (s.includes('general_court') || s.includes('gcourt') || s.includes('tribunal')) result.sourceType = 'general_court';
+  else if (s.includes('ias') || s.includes('audit'))   result.sourceType = 'ias_audit';
+  else if (s.includes('discharge') || s.includes('ep_discharge')) result.sourceType = 'ep_discharge';
+  else if (s.includes('correspondence') || s.includes('email') || s.includes('mail')) result.sourceType = 'correspondence';
+  else if (s.includes('staff_reg') || s.includes('staffreg')) result.sourceType = 'staff_regulations';
+  else if (s.includes('decision'))                     result.sourceType = 'decision';
+
+  // Case number — e.g. T-777-25, T777-25, F-123-24 (folders use dash instead of slash)
+  const caseMatch = folderName.match(/(?:^|[_\-\s])([TFC]-?\d+[-\/]\d{2,4})(?:[_\-\s]|$)/i);
+  if (caseMatch) result.caseNumber = caseMatch[1].replace(/(\d+)-(\d{2,4})$/, '$1/$2').toUpperCase();
+
+  // Date — YYYY-MM-DD or YYYY_MM_DD (not preceded/followed by another digit)
+  const dateMatch = folderName.match(/(?<!\d)(\d{4})[_-](\d{2})[_-](\d{2})(?!\d)/);
+  if (dateMatch) result.date = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
+
+  // Language
+  if      (/[_\-\s]fr[_\-\s\.]|french|français/i.test(folderName)) result.language = 'fr';
+  else if (/[_\-\s]en[_\-\s\.]|english/i.test(folderName))         result.language = 'en';
+
+  return result;
+}
+
+function applyFolderMetadata(files) {
+  if (!files.length) return;
+  const firstPath  = files[0].webkitRelativePath || '';
+  const folderName = firstPath.split('/')[0];
+  if (!folderName) return;
+
+  const meta    = parseFolderMetadata(folderName);
+  const detectedEl = document.getElementById('folderDetected');
+
+  if (Object.keys(meta).length === 0) {
+    detectedEl.classList.add('hidden');
+    return;
+  }
+
+  // Store detected values
+  batchMeta = {
+    sourceType: meta.sourceType || 'other',
+    caseNumber: meta.caseNumber || '',
+    date:       meta.date       || '',
+    language:   meta.language   || 'en',
+  };
+
+  // Show hint
+  const parts = [];
+  if (meta.sourceType) parts.push(meta.sourceType.replace(/_/g, ' '));
+  if (meta.caseNumber) parts.push(meta.caseNumber);
+  if (meta.date)       parts.push(meta.date);
+  if (meta.language)   parts.push(meta.language.toUpperCase());
+  detectedEl.textContent = `Detected from "${folderName}": ${parts.join(' · ')}`;
+  detectedEl.classList.remove('hidden');
+}
+
 function refreshFileUI() {
-  const countEl    = document.getElementById('selectedCount');
-  const uploadBtn  = document.getElementById('uploadBtn');
-  const sourceType = document.getElementById('sourceType');
+  const countEl   = document.getElementById('selectedCount');
+  const uploadBtn = document.getElementById('uploadBtn');
 
   uploadBtn.disabled = selectedFiles.length === 0;
 
@@ -332,9 +389,9 @@ function refreshFileUI() {
   countEl.classList.remove('hidden');
   countEl.textContent = `${selectedFiles.length} file(s) selected`;
 
-  // Auto-select correspondence when ALL files are email types
+  // Auto-set correspondence when ALL files are email types
   const allEmail = selectedFiles.every(f => ['.eml', '.msg'].includes(extOf(f.name)));
-  if (allEmail) sourceType.value = 'correspondence';
+  if (allEmail) batchMeta.sourceType = 'correspondence';
 }
 
 function applyFiles(files) {
@@ -358,8 +415,18 @@ const dropZone    = document.getElementById('dropZone');
 
 // Inputs are triggered directly by <label for="..."> — no JS click() needed.
 // Clear state when a new selection is made.
-fileInput.addEventListener('change',   () => { selectedFiles = []; applyFiles(fileInput.files); });
-folderInput.addEventListener('change', () => { selectedFiles = []; applyFiles(folderInput.files); });
+fileInput.addEventListener('change', () => {
+  selectedFiles = [];
+  batchMeta     = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+  document.getElementById('folderDetected').classList.add('hidden');
+  applyFiles(fileInput.files);
+});
+folderInput.addEventListener('change', () => {
+  selectedFiles = [];
+  batchMeta     = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+  applyFiles(folderInput.files);
+  applyFolderMetadata(Array.from(folderInput.files));
+});
 dropZone.addEventListener('dragover',  e  => { e.preventDefault(); dropZone.classList.add('border-blue-400', 'bg-blue-50'); });
 dropZone.addEventListener('dragleave',     () => dropZone.classList.remove('border-blue-400', 'bg-blue-50'));
 dropZone.addEventListener('drop', e => {
@@ -386,10 +453,7 @@ document.getElementById('modalClose').addEventListener('click', closeModal);
 document.getElementById('uploadBtn').addEventListener('click', async () => {
   if (selectedFiles.length === 0) return;
 
-  const sourceType = document.getElementById('sourceType').value;
-  const caseNumber = document.getElementById('caseNumber').value;
-  const docDate    = document.getElementById('docDate').value;
-  const language   = document.getElementById('language').value;
+  const { sourceType, caseNumber, date: docDate, language } = batchMeta;
 
   document.getElementById('uploadBtn').disabled = true;
   openModal();
@@ -466,24 +530,43 @@ document.getElementById('uploadBtn').addEventListener('click', async () => {
   document.getElementById('modalClose').classList.remove('hidden');
   bar.classList.replace('bg-blue-500', failed > 0 ? 'bg-yellow-400' : 'bg-green-500');
 
-  selectedFiles = []; fileInput.value = ''; folderInput.value = '';
+  selectedFiles = []; batchMeta = { sourceType: 'other', caseNumber: '', date: '', language: 'en' };
+  fileInput.value = ''; folderInput.value = '';
+  document.getElementById('folderDetected').classList.add('hidden');
   refreshFileUI();
 });
 
 // ════════════════════════════════════════════════
 //  Documents tab
 // ════════════════════════════════════════════════
-async function loadDocuments() {
-  const content = document.getElementById('docsContent');
-  content.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+let allDocs = [];
 
-  const res = await apiFetch('/api/documents', { headers: authHdr() });
-  if (!res) return;
+function renderDocuments() {
+  const filterType = document.getElementById('docsFilterType').value;
+  const filterCase = document.getElementById('docsFilterCase').value.trim().toLowerCase();
+  const filterDate = document.getElementById('docsFilterDate').value.trim();
+  const content    = document.getElementById('docsContent');
+  const countEl    = document.getElementById('docsFilterCount');
 
-  const docs = await res.json();
+  const filtered = allDocs.filter(doc => {
+    if (filterType && doc.source_type !== filterType) return false;
+    if (filterCase && !(doc.case_number || '').toLowerCase().includes(filterCase)) return false;
+    if (filterDate && !(doc.document_date || '').includes(filterDate)) return false;
+    return true;
+  });
 
-  if (docs.length === 0) {
-    content.innerHTML = '<p class="text-gray-400 text-sm">No documents indexed yet. Upload some documents to get started.</p>';
+  const isFiltered = filterType || filterCase || filterDate;
+  if (isFiltered) {
+    countEl.textContent = `${filtered.length} of ${allDocs.length} shown`;
+    countEl.classList.remove('hidden');
+  } else {
+    countEl.classList.add('hidden');
+  }
+
+  if (filtered.length === 0) {
+    content.innerHTML = allDocs.length === 0
+      ? '<p class="text-gray-400 text-sm">No documents indexed yet. Upload some documents to get started.</p>'
+      : '<p class="text-gray-400 text-sm">No documents match the current filters.</p>';
     return;
   }
 
@@ -507,7 +590,7 @@ async function loadDocuments() {
   `;
 
   const tbody = document.getElementById('docsTableBody');
-  docs.forEach(doc => {
+  filtered.forEach(doc => {
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-gray-50';
     tr.innerHTML = `
@@ -515,9 +598,11 @@ async function loadDocuments() {
       <td class="px-4 py-3 font-medium text-gray-800 max-w-xs">
         <span class="block truncate" title="${doc.filename}">${doc.filename}</span>
       </td>
-      <td class="px-4 py-3 text-gray-500">${doc.source_type}</td>
-      <td class="px-4 py-3 text-gray-500">${doc.case_number  || '—'}</td>
-      <td class="px-4 py-3 text-gray-500">${doc.document_date || '—'}</td>
+      <td class="px-4 py-3">
+        <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">${doc.source_type.replace(/_/g, ' ')}</span>
+      </td>
+      <td class="px-4 py-3 text-gray-500">${doc.case_number   || '<span class="text-gray-300">n/a</span>'}</td>
+      <td class="px-4 py-3 text-gray-500">${doc.document_date || '<span class="text-gray-300">n/a</span>'}</td>
       <td class="px-4 py-3 text-gray-500">${doc.total_chunks}</td>
       <td class="px-4 py-3">
         <button class="delete-btn text-xs font-medium text-red-500 hover:text-red-700"
@@ -539,7 +624,27 @@ async function loadDocuments() {
   });
 }
 
+async function loadDocuments() {
+  const content = document.getElementById('docsContent');
+  content.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+
+  const res = await apiFetch('/api/documents', { headers: authHdr() });
+  if (!res) return;
+
+  allDocs = await res.json();
+  renderDocuments();
+}
+
 document.getElementById('refreshDocsBtn').addEventListener('click', loadDocuments);
+document.getElementById('docsFilterType').addEventListener('change', renderDocuments);
+document.getElementById('docsFilterCase').addEventListener('input',  renderDocuments);
+document.getElementById('docsFilterDate').addEventListener('input',  renderDocuments);
+document.getElementById('docsClearFilters').addEventListener('click', () => {
+  document.getElementById('docsFilterType').value = '';
+  document.getElementById('docsFilterCase').value = '';
+  document.getElementById('docsFilterDate').value = '';
+  renderDocuments();
+});
 
 // ════════════════════════════════════════════════
 //  Search tab

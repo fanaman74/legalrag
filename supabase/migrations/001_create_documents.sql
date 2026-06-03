@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
   document_id     BIGINT      REFERENCES documents(id) ON DELETE CASCADE,
   chunk_index     INT         NOT NULL,
   content         TEXT        NOT NULL,
-  embedding       vector(1024),   -- voyage-3-large = 1024 dims
+  embedding       vector(1024),   -- mistralai/mistral-embed = 1024 dims
   token_count     INT,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
