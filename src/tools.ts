@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { embedText } from './embeddings.js';
 import { semanticSearch, listDocuments, deleteDocument } from './supabase.js';
-import { ingestDocument, parsePdf, parseDocx } from './ingest.js';
+import { ingestDocument, parsePdf, parseDocx, parseEml, parseMsg } from './ingest.js';
 import type { SourceType } from './types.js';
 
 const sourceTypeEnum = z.enum([
@@ -99,6 +99,8 @@ export async function handleIngestFile(
   let rawText: string;
   if (ext === '.pdf')       rawText = await parsePdf(buffer);
   else if (ext === '.docx') rawText = await parseDocx(buffer);
+  else if (ext === '.eml')  rawText = await parseEml(buffer);
+  else if (ext === '.msg')  rawText = await parseMsg(buffer);
   else                      rawText = buffer.toString('utf-8');
 
   const result = await ingestDocument({
