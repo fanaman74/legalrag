@@ -24,9 +24,12 @@ app.use(express.json({ limit: '10mb' }));
 // ─── REST API ────────────────────────────────────────────────────────────────
 app.use('/api', apiRouter);
 
+// ─── Health check (must be before catch-all) ─────────────────────────────────
+app.get('/health', (_, res) => res.json({ status: 'ok' }));
+
 // ─── Static frontend ─────────────────────────────────────────────────────────
 app.use(express.static(join(__dirname, '..', 'public')));
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   if (
     !req.path.startsWith('/api') &&
     !req.path.startsWith('/sse') &&
@@ -69,8 +72,6 @@ app.post('/messages', async (req, res) => {
   }
   await transport.handlePostMessage(req, res);
 });
-
-app.get('/health', (_, res) => res.json({ status: 'ok' }));
 
 const port = process.env.PORT ?? 3000;
 app.listen(port, () => console.log(`[legal-doc-rag] HTTP MCP server on :${port}`));

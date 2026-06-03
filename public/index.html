@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Legal RAG — Document Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ═══════════════════ LOGIN ═══════════════════ -->
+<div id="loginView" class="min-h-screen flex items-center justify-center">
+  <div class="bg-white shadow-md rounded-2xl p-8 w-full max-w-sm">
+    <h1 class="text-2xl font-bold text-gray-800 mb-1 text-center">Legal RAG</h1>
+    <p class="text-sm text-gray-400 text-center mb-6">Document Manager</p>
+    <form id="loginForm">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+      <input id="loginPassword" type="password" required autocomplete="current-password"
+        class="w-full border border-gray-300 rounded-lg px-3 py-2 mb-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <div id="loginError" class="text-red-600 text-sm mb-3 hidden"></div>
+      <button type="submit"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg text-sm transition">
+        Login
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════ MAIN APP ═══════════════════ -->
+<div id="mainApp" class="hidden min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
+    <h1 class="text-lg font-bold text-gray-800">Legal RAG — Document Manager</h1>
+    <button id="logoutBtn" class="text-sm text-gray-400 hover:text-red-600 transition">Logout</button>
+  </header>
+
+  <!-- Tab bar -->
+  <div class="bg-white border-b border-gray-200 px-6 shrink-0">
+    <nav class="flex gap-6">
+      <button data-tab="upload"    class="tab-btn py-3 text-sm font-medium">Upload</button>
+      <button data-tab="documents" class="tab-btn py-3 text-sm font-medium">Documents</button>
+      <button data-tab="search"    class="tab-btn py-3 text-sm font-medium">Search</button>
+    </nav>
+  </div>
+
+  <!-- Content -->
+  <main class="flex-1 overflow-auto">
+    <div class="max-w-5xl mx-auto px-6 py-8">
+
+      <!-- ─── UPLOAD TAB ─── -->
+      <div id="tab-upload">
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+          <div class="flex gap-2 mb-4">
+            <button id="modeFiles"
+              class="px-4 py-1.5 rounded-full text-sm font-medium bg-blue-600 text-white transition">
+              Files
+            </button>
+            <button id="modeFolder"
+              class="px-4 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition">
+              Folder
+            </button>
+          </div>
+
+          <input id="fileInput"   type="file" multiple accept=".pdf,.docx,.txt,.eml,.msg" class="hidden" />
+          <input id="folderInput" type="file" webkitdirectory class="hidden" />
+
+          <div id="dropZone"
+            class="border-2 border-dashed border-gray-300 rounded-xl p-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition">
+            <p class="text-gray-500 text-sm">Drop files here or <span class="text-blue-600 font-medium">click to browse</span></p>
+            <p class="text-xs text-gray-400 mt-1">PDF · DOCX · TXT · EML · MSG</p>
+          </div>
+
+          <p id="selectedCount" class="mt-2 text-sm text-gray-500 hidden"></p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-4">
+          <h3 class="text-sm font-semibold text-gray-700 mb-4">Metadata — applies to all files in this batch</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Source Type *</label>
+              <select id="sourceType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="olaf_complaint">OLAF Complaint</option>
+                <option value="general_court">General Court</option>
+                <option value="ias_audit">IAS Audit</option>
+                <option value="ep_discharge">EP Discharge</option>
+                <option value="correspondence" selected>Correspondence</option>
+                <option value="staff_regulations">Staff Regulations</option>
+                <option value="decision">Decision</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Language</label>
+              <select id="language" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                <option value="en">English</option>
+                <option value="fr">French</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Case Number (optional)</label>
+              <input id="caseNumber" type="text" placeholder="e.g. T-777/25"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-600 mb-1">Document Date (optional)</label>
+              <input id="docDate" type="date"
+                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+        </div>
+
+        <button id="uploadBtn" disabled
+          class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium px-6 py-2.5 rounded-lg text-sm transition">
+          Upload &amp; Ingest
+        </button>
+
+        <div id="progressList" class="mt-6 space-y-2 hidden"></div>
+      </div>
+
+      <!-- ─── DOCUMENTS TAB ─── -->
+      <div id="tab-documents" class="hidden">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-semibold text-gray-800">Indexed Documents</h2>
+          <button id="refreshDocsBtn" class="text-sm text-blue-600 hover:text-blue-800">↻ Refresh</button>
+        </div>
+        <div id="docsContent">
+          <p class="text-gray-400 text-sm">Loading...</p>
+        </div>
+      </div>
+
+      <!-- ─── SEARCH TAB ─── -->
+      <div id="tab-search" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+          <div class="flex gap-3 mb-4">
+            <input id="searchQuery" type="text" placeholder="Search your legal documents..."
+              class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button id="searchBtn"
+              class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2 rounded-lg text-sm transition shrink-0">
+              Search
+            </button>
+          </div>
+
+          <details class="text-sm">
+            <summary class="text-gray-400 cursor-pointer select-none hover:text-gray-600">Filters</summary>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Source Type</label>
+                <select id="searchSourceType" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">All types</option>
+                  <option value="olaf_complaint">OLAF Complaint</option>
+                  <option value="general_court">General Court</option>
+                  <option value="ias_audit">IAS Audit</option>
+                  <option value="ep_discharge">EP Discharge</option>
+                  <option value="correspondence">Correspondence</option>
+                  <option value="staff_regulations">Staff Regulations</option>
+                  <option value="decision">Decision</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Case Number</label>
+                <input id="searchCaseNumber" type="text" placeholder="e.g. T-777/25"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">
+                  Threshold: <span id="thresholdVal">0.60</span>
+                </label>
+                <input id="searchThreshold" type="range" min="0.50" max="1.00" step="0.05" value="0.60"
+                  class="w-full accent-blue-600" />
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Max Results</label>
+                <input id="searchLimit" type="number" min="1" max="20" value="8"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div id="searchResults"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+//  Auth
+// ════════════════════════════════════════════════
+const getToken   = () => localStorage.getItem('rag_token');
+const setToken   = t  => localStorage.setItem('rag_token', t);
+const clearToken = () => localStorage.removeItem('rag_token');
+
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (res.status === 401) { clearToken(); showLogin(); return null; }
+  return res;
+}
+
+function authHdr() {
+  return { 'Authorization': `Bearer ${getToken()}` };
+}
+
+// ════════════════════════════════════════════════
+//  Views
+// ════════════════════════════════════════════════
+function showLogin() {
+  document.getElementById('loginView').classList.remove('hidden');
+  document.getElementById('mainApp').classList.add('hidden');
+}
+
+function showApp() {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('mainApp').classList.remove('hidden');
+  switchTab('upload');
+}
+
+// ════════════════════════════════════════════════
+//  Login
+// ════════════════════════════════════════════════
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+
+  const res  = await fetch('/api/auth', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ password }),
+  });
+  const data = await res.json();
+
+  if (!res.ok) {
+    errEl.textContent = data.error || 'Login failed';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  setToken(data.token);
+  showApp();
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => {
+  clearToken();
+  showLogin();
+});
+
+// ════════════════════════════════════════════════
+//  Tabs
+// ════════════════════════════════════════════════
+function switchTab(name) {
+  ['upload', 'documents', 'search'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== name);
+  });
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const active = btn.dataset.tab === name;
+    btn.classList.toggle('border-b-2',      active);
+    btn.classList.toggle('border-blue-600', active);
+    btn.classList.toggle('text-blue-600',   active);
+    btn.classList.toggle('text-gray-500',  !active);
+  });
+  if (name === 'documents') loadDocuments();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+// ════════════════════════════════════════════════
+//  Upload tab
+// ════════════════════════════════════════════════
+const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.eml', '.msg']);
+let selectedFiles  = [];
+
+function extOf(name) { return name.slice(name.lastIndexOf('.')).toLowerCase(); }
+
+function refreshFileUI() {
+  const countEl    = document.getElementById('selectedCount');
+  const uploadBtn  = document.getElementById('uploadBtn');
+  const sourceType = document.getElementById('sourceType');
+
+  uploadBtn.disabled = selectedFiles.length === 0;
+
+  if (selectedFiles.length === 0) {
+    countEl.classList.add('hidden');
+    return;
+  }
+  countEl.classList.remove('hidden');
+  countEl.textContent = `${selectedFiles.length} file(s) selected`;
+
+  // Auto-select correspondence when ALL files are email types
+  const allEmail = selectedFiles.every(f => ['.eml', '.msg'].includes(extOf(f.name)));
+  if (allEmail) sourceType.value = 'correspondence';
+}
+
+function applyFiles(files) {
+  selectedFiles = Array.from(files).filter(f => ALLOWED_EXTS.has(extOf(f.name)));
+  refreshFileUI();
+}
+
+const fileInput   = document.getElementById('fileInput');
+const folderInput = document.getElementById('folderInput');
+const dropZone    = document.getElementById('dropZone');
+
+document.getElementById('modeFiles').addEventListener('click', () => {
+  selectedFiles = []; refreshFileUI();
+  fileInput.value = ''; fileInput.click();
+});
+document.getElementById('modeFolder').addEventListener('click', () => {
+  selectedFiles = []; refreshFileUI();
+  folderInput.value = ''; folderInput.click();
+});
+
+fileInput.addEventListener('change',   () => applyFiles(fileInput.files));
+folderInput.addEventListener('change', () => applyFiles(folderInput.files));
+
+dropZone.addEventListener('click',     () => fileInput.click());
+dropZone.addEventListener('dragover',  e  => { e.preventDefault(); dropZone.classList.add('border-blue-400', 'bg-blue-50'); });
+dropZone.addEventListener('dragleave',     () => dropZone.classList.remove('border-blue-400', 'bg-blue-50'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+  applyFiles(e.dataTransfer.files);
+});
+
+document.getElementById('uploadBtn').addEventListener('click', async () => {
+  if (selectedFiles.length === 0) return;
+
+  const sourceType = document.getElementById('sourceType').value;
+  const caseNumber = document.getElementById('caseNumber').value;
+  const docDate    = document.getElementById('docDate').value;
+  const language   = document.getElementById('language').value;
+
+  const progressList = document.getElementById('progressList');
+  progressList.classList.remove('hidden');
+  progressList.innerHTML = '';
+  document.getElementById('uploadBtn').disabled = true;
+
+  for (const file of selectedFiles) {
+    const isEmail = ['.eml', '.msg'].includes(extOf(file.name));
+    const row     = document.createElement('div');
+    row.className = 'flex items-center gap-3 text-sm p-3 bg-gray-50 rounded-lg border border-gray-100';
+    row.innerHTML = `
+      <span class="flex-1 text-gray-700 truncate">${isEmail ? '📧' : '📄'} ${file.name}</span>
+      <span class="status text-gray-400 shrink-0">Ingesting…</span>
+    `;
+    progressList.appendChild(row);
+    const statusEl = row.querySelector('.status');
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file, file.name);
+      fd.append('source_type', sourceType);
+      if (caseNumber) fd.append('case_number', caseNumber);
+      if (docDate)    fd.append('document_date', docDate);
+      fd.append('language', language);
+
+      const res  = await fetch('/api/ingest', {
+        method:  'POST',
+        headers: authHdr(),
+        body:    fd,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        statusEl.textContent = `✗ ${data.error}`;
+        statusEl.className   = 'status text-red-500 shrink-0 text-xs';
+      } else {
+        statusEl.textContent = `✓ ${data.chunksCreated} chunks`;
+        statusEl.className   = 'status text-green-600 shrink-0 text-xs font-medium';
+      }
+    } catch {
+      statusEl.textContent = '✗ Network error';
+      statusEl.className   = 'status text-red-500 shrink-0 text-xs';
+    }
+  }
+
+  selectedFiles = []; fileInput.value = ''; folderInput.value = '';
+  refreshFileUI();
+});
+
+// ════════════════════════════════════════════════
+//  Documents tab
+// ════════════════════════════════════════════════
+async function loadDocuments() {
+  const content = document.getElementById('docsContent');
+  content.innerHTML = '<p class="text-gray-400 text-sm">Loading…</p>';
+
+  const res = await apiFetch('/api/documents', { headers: authHdr() });
+  if (!res) return;
+
+  const docs = await res.json();
+
+  if (docs.length === 0) {
+    content.innerHTML = '<p class="text-gray-400 text-sm">No documents indexed yet. Upload some documents to get started.</p>';
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="overflow-x-auto rounded-xl border border-gray-200">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+          <tr>
+            <th class="px-4 py-3 text-left">ID</th>
+            <th class="px-4 py-3 text-left">Filename</th>
+            <th class="px-4 py-3 text-left">Type</th>
+            <th class="px-4 py-3 text-left">Case</th>
+            <th class="px-4 py-3 text-left">Date</th>
+            <th class="px-4 py-3 text-left">Chunks</th>
+            <th class="px-4 py-3 text-left"></th>
+          </tr>
+        </thead>
+        <tbody id="docsTableBody" class="bg-white divide-y divide-gray-100"></tbody>
+      </table>
+    </div>
+  `;
+
+  const tbody = document.getElementById('docsTableBody');
+  docs.forEach(doc => {
+    const tr = document.createElement('tr');
+    tr.className = 'hover:bg-gray-50';
+    tr.innerHTML = `
+      <td class="px-4 py-3 text-gray-400">${doc.id}</td>
+      <td class="px-4 py-3 font-medium text-gray-800 max-w-xs">
+        <span class="block truncate" title="${doc.filename}">${doc.filename}</span>
+      </td>
+      <td class="px-4 py-3 text-gray-500">${doc.source_type}</td>
+      <td class="px-4 py-3 text-gray-500">${doc.case_number  || '—'}</td>
+      <td class="px-4 py-3 text-gray-500">${doc.document_date || '—'}</td>
+      <td class="px-4 py-3 text-gray-500">${doc.total_chunks}</td>
+      <td class="px-4 py-3">
+        <button class="delete-btn text-xs font-medium text-red-500 hover:text-red-700"
+          data-id="${doc.id}" data-name="${doc.filename}">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Delete "${btn.dataset.name}" and all its chunks? This cannot be undone.`)) return;
+      const res = await apiFetch(`/api/documents/${btn.dataset.id}`, {
+        method:  'DELETE',
+        headers: authHdr(),
+      });
+      if (res) loadDocuments();
+    });
+  });
+}
+
+document.getElementById('refreshDocsBtn').addEventListener('click', loadDocuments);
+
+// ════════════════════════════════════════════════
+//  Search tab
+// ════════════════════════════════════════════════
+document.getElementById('searchThreshold').addEventListener('input', e => {
+  document.getElementById('thresholdVal').textContent = parseFloat(e.target.value).toFixed(2);
+});
+
+async function doSearch() {
+  const q = document.getElementById('searchQuery').value.trim();
+  if (!q) return;
+
+  const params = new URLSearchParams({ q });
+  const st  = document.getElementById('searchSourceType').value;
+  const cn  = document.getElementById('searchCaseNumber').value;
+  const thr = document.getElementById('searchThreshold').value;
+  const lim = document.getElementById('searchLimit').value;
+
+  if (st) params.set('source_type', st);
+  if (cn) params.set('case_number', cn);
+  params.set('threshold', thr);
+  params.set('limit', lim);
+
+  const resultsEl = document.getElementById('searchResults');
+  resultsEl.innerHTML = `
+    <div class="flex items-center gap-2 text-gray-400 text-sm">
+      <div class="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+      Searching…
+    </div>`;
+
+  const res = await apiFetch(`/api/search?${params}`, { headers: authHdr() });
+  if (!res) return;
+
+  const results = await res.json();
+
+  if (results.error) {
+    resultsEl.innerHTML = `<p class="text-red-500 text-sm">${results.error}</p>`;
+    return;
+  }
+
+  if (results.length === 0) {
+    resultsEl.innerHTML = '<p class="text-gray-400 text-sm">No results found. Try lowering the threshold or broadening your query.</p>';
+    return;
+  }
+
+  resultsEl.innerHTML = results.map(r => `
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-4">
+      <div class="flex items-start justify-between gap-4 mb-1">
+        <span class="font-semibold text-gray-800 text-sm truncate">${r.filename}</span>
+        <span class="shrink-0 text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+          ${(r.similarity * 100).toFixed(1)}% match
+        </span>
+      </div>
+      <p class="text-xs text-gray-400 mb-3">
+        ${r.source_type}${r.case_number ? ' · ' + r.case_number : ''}${r.document_date ? ' · ' + r.document_date : ''}
+      </p>
+      <p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${r.content.slice(0, 600)}${r.content.length > 600 ? '…' : ''}</p>
+    </div>
+  `).join('');
+}
+
+document.getElementById('searchBtn').addEventListener('click', doSearch);
+document.getElementById('searchQuery').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// ════════════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════════════
+if (getToken()) {
+  showApp();
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>
