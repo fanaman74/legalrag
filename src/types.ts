@@ -1,5 +1,9 @@
 // src/types.ts
 
+/** Supported language codes for documents and metadata. */
+export type Language = 'en' | 'fr';
+
+/** Structured metadata for a legal document in the knowledge base. */
 export interface DocumentRecord {
   id?: number;
   filename: string;
@@ -8,10 +12,11 @@ export interface DocumentRecord {
   folder?: string;
   case_number?: string;
   document_date?: string;
-  language?: 'en' | 'fr';
+  language?: Language;
   total_chunks?: number;
 }
 
+/** Text chunk extracted from a document with its embedding vector. */
 export interface ChunkRecord {
   document_id: number;
   chunk_index: number;
@@ -20,12 +25,13 @@ export interface ChunkRecord {
   token_count: number;
 }
 
+/** Search result containing a matching chunk and associated document metadata. */
 export interface SearchResult {
   chunk_id: number;
   document_id: number;
   filename: string;
   case_number: string | null;
-  source_type: string;
+  source_type: SourceType;
   document_date: string | null;
   content: string;
   similarity: number;
@@ -41,14 +47,16 @@ export type SourceType =
   | 'decision'
   | 'other';
 
+/** Batch ingestion request for processing multiple documents. */
 export interface BatchRequest {
   batch_id: string;
   total_files: number;
   source_type?: SourceType;
   case_number?: string;
-  language?: 'en' | 'fr';
+  language?: Language;
 }
 
+/** Real-time progress updates during batch processing. */
 export interface BatchProgress {
   type: 'progress' | 'complete';
   batch_id: string;
@@ -63,6 +71,7 @@ export interface BatchProgress {
   errors?: Array<{ filename: string; reason: string }>;
 }
 
+/** AI-generated analysis and risk assessment for a legal document. */
 export interface AnalysisResult {
   document_type: string;
   parties: string[];
@@ -74,6 +83,7 @@ export interface AnalysisResult {
   reviewed_at: string;
 }
 
+/** Document record enriched with analysis results and metadata. */
 export interface DocumentWithAnalysis {
   id: number;
   filename: string;
