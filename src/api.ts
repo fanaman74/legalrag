@@ -3,10 +3,12 @@ import express from 'express';
 import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import path from 'path';
-import { listDocuments, deleteDocument, semanticSearch, getDocumentContent } from './supabase.js';
+import { v4 as uuidv4 } from 'uuid';
+import { listDocuments, deleteDocument, semanticSearch, getDocumentContent, createBatchUpload, updateBatchProgress, storeDocumentAnalysis, updateDocumentReview } from './supabase.js';
 import { chatWithDocument } from './chat.js';
 import { ingestDocument, parsePdf, parseDocx, parseEml, parseMsg } from './ingest.js';
 import { embedText } from './embeddings.js';
+import { reviewDocument } from './review.js';
 import type { SourceType } from './types.js';
 
 const router = express.Router();
@@ -15,6 +17,11 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
+
+const uploadBatch = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+}).array('files', 1000); // Max 1000 files per batch
 
 const ALLOWED_EXTS = new Set(['.pdf', '.docx', '.txt', '.md', '.eml', '.msg']);
 
@@ -192,6 +199,101 @@ router.get('/search', requireAuth, async (req, res) => {
       limit:      limit        ? parseInt(limit, 10)   : 8,
     });
     res.json(results);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── Batch processing helper function ──────────────────────────────────────
+async function processBatchAsync(
+  batchId: string,
+  files: Express.Multer.File[],
+  sourceType: string,
+  caseNumber: string | undefined,
+  language: string
+): Promise<void> {
+  let successCount = 0;
+  let failedCount = 0;
+  const errors: Array<{ filename: string; reason: string }> = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const ext = path.extname(file.originalname).toLowerCase();
+
+    try {
+      // Parse file
+      let rawText: string;
+      if (ext === '.pdf') rawText = await parsePdf(file.buffer);
+      else if (ext === '.docx') rawText = await parseDocx(file.buffer);
+      else if (ext === '.eml') rawText = await parseEml(file.buffer);
+      else if (ext === '.msg') rawText = await parseMsg(file.buffer);
+      else if (['.txt', '.md'].includes(ext)) rawText = file.buffer.toString('utf-8');
+      else throw new Error(`Unsupported file type: ${ext}`);
+
+      // Ingest document
+      const result = await ingestDocument({
+        filename: file.originalname,
+        rawText,
+        sourceType: sourceType as SourceType,
+        folder: 'batch_upload', // Default folder path
+        caseNumber,
+        language: language as 'en' | 'fr',
+      });
+
+      // Review document asynchronously (don't wait)
+      reviewDocument(rawText)
+        .then(async (analysis) => {
+          await updateDocumentReview(result.documentId, analysis);
+          await storeDocumentAnalysis(result.documentId, analysis);
+        })
+        .catch(err => console.error(`Review failed for doc ${result.documentId}:`, err));
+
+      successCount++;
+    } catch (err) {
+      failedCount++;
+      errors.push({
+        filename: file.originalname,
+        reason: (err as Error).message,
+      });
+    }
+  }
+
+  // Update batch status
+  await updateBatchProgress(batchId, successCount, failedCount, errors);
+}
+
+// ─── POST /api/ingest/batch ─────────────────────────────────────────────────
+router.post('/ingest/batch', requireAuth, uploadBatch, async (req, res) => {
+  const files = req.files as Express.Multer.File[] || [];
+  if (files.length === 0) {
+    res.status(400).json({ error: 'No files uploaded' });
+    return;
+  }
+
+  const { source_type, case_number, language } = req.body as {
+    source_type?: string;
+    case_number?: string;
+    language?: string;
+  };
+
+  const batchId = uuidv4();
+
+  try {
+    await createBatchUpload(batchId, files.length);
+    res.status(202).json({
+      batch_id: batchId,
+      message: 'Batch processing started',
+      total_files: files.length,
+    });
+
+    // Process batch asynchronously (fire and forget)
+    processBatchAsync(
+      batchId,
+      files,
+      source_type || 'other',
+      case_number,
+      language || 'en'
+    ).catch(err => console.error(`Batch ${batchId} failed:`, err));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "legal-rag",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["tsx", "src/remote.ts"],
+      "port": 3000
+    }
+  ]
+}
