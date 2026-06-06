@@ -14,7 +14,8 @@
     "start:remote": "node dist/remote.js",
     "ingest": "npx tsx scripts/ingest-file.ts",
     "dev": "npx tsx --watch src/server.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:batch": "npx tsx scripts/test-batch-upload.ts"
   },
   "keywords": [],
   "author": "",
