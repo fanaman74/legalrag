@@ -40,3 +40,51 @@ export type SourceType =
   | 'staff_regulations'
   | 'decision'
   | 'other';
+
+export interface BatchRequest {
+  batch_id: string;
+  total_files: number;
+  source_type?: SourceType;
+  case_number?: string;
+  language?: 'en' | 'fr';
+}
+
+export interface BatchProgress {
+  type: 'progress' | 'complete';
+  batch_id: string;
+  file_index?: number;
+  total_files?: number;
+  filename?: string;
+  status?: 'processing' | 'success' | 'failed';
+  document_id?: number;
+  error?: string | null;
+  successful?: number;
+  failed?: number;
+  errors?: Array<{ filename: string; reason: string }>;
+}
+
+export interface AnalysisResult {
+  document_type: string;
+  parties: string[];
+  key_dates: string[];
+  risks: Array<{ flag: string; severity: string }>;
+  urgency_level: string;
+  summary?: string;
+  ai_model: string;
+  reviewed_at: string;
+}
+
+export interface DocumentWithAnalysis {
+  id: number;
+  filename: string;
+  source_type: SourceType;
+  folder_path?: string;
+  document_type?: string;
+  parties?: string[];
+  key_dates?: string[];
+  risks?: string[];
+  urgency_level?: string;
+  review_status: string;
+  reviewed_at?: string;
+  analysis?: AnalysisResult;
+}
