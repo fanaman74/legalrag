@@ -1,6 +1,6 @@
 // src/supabase.ts
 import { createClient } from '@supabase/supabase-js';
-import type { SearchResult } from './types.js';
+import type { SearchResult, AnalysisResult } from './types.js';
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -139,4 +139,74 @@ export async function deleteDocument(documentId: number): Promise<void> {
     .eq('id', documentId);
 
   if (error) throw new Error(`deleteDocument failed: ${error.message}`);
+}
+
+export async function createBatchUpload(batch_id: string, total_files: number): Promise<void> {
+  const { error } = await supabase
+    .from('batch_uploads')
+    .insert([{ id: batch_id, total_files }]);
+
+  if (error) throw new Error(`Failed to create batch: ${error.message}`);
+}
+
+export async function updateBatchProgress(
+  batch_id: string,
+  successful_count: number,
+  failed_count: number,
+  errors: Array<{ filename: string; reason: string }>
+): Promise<void> {
+  const { error } = await supabase
+    .from('batch_uploads')
+    .update({
+      successful_count,
+      failed_count,
+      errors,
+      status: failed_count === 0 ? 'completed' : 'completed',
+      completed_at: new Date().toISOString(),
+    })
+    .eq('id', batch_id);
+
+  if (error) throw new Error(`Failed to update batch: ${error.message}`);
+}
+
+export async function getBatchStatus(batch_id: string): Promise<any> {
+  const { data, error } = await supabase
+    .from('batch_uploads')
+    .select('*')
+    .eq('id', batch_id)
+    .single();
+
+  if (error) throw new Error(`Batch not found: ${error.message}`);
+  return data;
+}
+
+export async function storeDocumentAnalysis(
+  document_id: number,
+  analysis: AnalysisResult
+): Promise<void> {
+  const { error } = await supabase
+    .from('document_analysis')
+    .insert([{ document_id, analysis_json: analysis }]);
+
+  if (error) throw new Error(`Failed to store analysis: ${error.message}`);
+}
+
+export async function updateDocumentReview(
+  document_id: number,
+  analysis: AnalysisResult
+): Promise<void> {
+  const { error } = await supabase
+    .from('documents')
+    .update({
+      document_type: analysis.document_type,
+      parties: analysis.parties,
+      key_dates: analysis.key_dates,
+      risks: analysis.risks.map(r => r.flag),
+      urgency_level: analysis.urgency_level,
+      review_status: 'completed',
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('id', document_id);
+
+  if (error) throw new Error(`Failed to update document review: ${error.message}`);
 }
