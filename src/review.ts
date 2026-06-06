@@ -4,6 +4,11 @@ import type { AnalysisResult } from './types.js';
 
 const client = new Anthropic();
 
+// Constants
+const MODEL_ID = 'claude-3-5-sonnet-20241022';
+const MAX_TOKENS = 1024;
+const CONTENT_MAX_CHARS = 8000;
+
 const REVIEW_PROMPT = `You are a legal document analyzer. Extract the following structured information from the document:
 - Document type: Classify as one of: contract, complaint, court_decision, correspondence, agreement, motion, brief, memorandum, regulation, statute, other
 - Parties: List all named parties, entities, or individuals involved (extract proper nouns)
@@ -14,21 +19,31 @@ const REVIEW_PROMPT = `You are a legal document analyzer. Extract the following 
 
 Return ONLY valid JSON with keys: document_type, parties (array of strings), key_dates (array of YYYY-MM-DD strings), risks (array of {flag, severity}), urgency_level (string), summary (string)`;
 
+/**
+ * Review a legal document using Claude AI to extract structured information.
+ * @param content - Document content (will be truncated to 8000 chars)
+ * @returns Structured analysis with document type, parties, dates, risks, and urgency
+ */
 export async function reviewDocument(content: string): Promise<AnalysisResult> {
   try {
     const response = await client.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 1024,
+      model: MODEL_ID,
+      max_tokens: MAX_TOKENS,
       messages: [
         {
           role: 'user',
-          content: `${REVIEW_PROMPT}\n\nDocument content:\n\n${content.slice(0, 8000)}`,
+          content: `${REVIEW_PROMPT}\n\nDocument content:\n\n${content.slice(0, CONTENT_MAX_CHARS)}`,
         },
       ],
     });
 
-    const text = response.content[0].type === 'text' ? response.content[0].text : '';
-    const analysis = JSON.parse(text);
+    const text = response.content?.[0]?.type === 'text' ? response.content?.[0]?.text : '';
+    let analysis;
+    try {
+      analysis = JSON.parse(text);
+    } catch {
+      analysis = {}; // Fall back to empty object so defaults apply
+    }
 
     return {
       document_type: analysis.document_type || 'other',
@@ -37,7 +52,7 @@ export async function reviewDocument(content: string): Promise<AnalysisResult> {
       risks: Array.isArray(analysis.risks) ? analysis.risks : [],
       urgency_level: analysis.urgency_level || 'medium',
       summary: analysis.summary || '',
-      ai_model: 'claude-opus-4-8',
+      ai_model: MODEL_ID,
       reviewed_at: new Date().toISOString(),
     };
   } catch (err) {
