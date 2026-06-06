@@ -140,25 +140,37 @@ export async function parseEml(buffer: Buffer): Promise<string> {
 }
 
 export async function parseMsg(buffer: Buffer): Promise<string> {
-  const MsgReaderModule = await import('@kenjiuno/msgreader');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const MsgReader = (MsgReaderModule as any).default ?? MsgReaderModule;
-  const reader = new MsgReader(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength));
-  const data   = reader.getFileData();
+  try {
+    const MsgReaderModule = await import('@kenjiuno/msgreader');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const MsgReader = (MsgReaderModule as any).default ?? (MsgReaderModule as any).MsgReader ?? MsgReaderModule;
 
-  const from    = (data as any).senderEmail ?? (data as any).senderName ?? '';
-  const to      = ((data as any).recipients ?? [])
-    .map((r: any) => r.email ?? r.name ?? '')
-    .filter(Boolean)
-    .join(', ');
-  const subject = (data as any).subject ?? '';
-  const body    = (data as any).body    ?? '';
+    if (typeof MsgReader !== 'function') {
+      throw new Error('MsgReader is not a constructor');
+    }
 
-  return [
-    from    ? `From: ${from}`       : '',
-    to      ? `To: ${to}`           : '',
-    subject ? `Subject: ${subject}` : '',
-    '',
-    body,
-  ].filter((line, idx) => idx >= 3 || line !== '').join('\n');
+    const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    const reader = new MsgReader(arrayBuffer);
+    const data   = reader.getFileData();
+
+    const from    = (data as any).senderEmail ?? (data as any).senderName ?? '';
+    const to      = ((data as any).recipients ?? [])
+      .map((r: any) => r.email ?? r.name ?? '')
+      .filter(Boolean)
+      .join(', ');
+    const subject = (data as any).subject ?? '';
+    const body    = (data as any).body    ?? '';
+
+    return [
+      from    ? `From: ${from}`       : '',
+      to      ? `To: ${to}`           : '',
+      subject ? `Subject: ${subject}` : '',
+      '',
+      body,
+    ].filter((line, idx) => idx >= 3 || line !== '').join('\n');
+  } catch (err) {
+    // Fallback: extract text from buffer as-is
+    console.warn(`[parseMsg] Failed to parse MSG file with msgreader: ${(err as Error).message}`);
+    return buffer.toString('utf-8', 0, Math.min(100000, buffer.length));
+  }
 }
