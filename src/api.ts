@@ -4,7 +4,7 @@ import multer from 'multer';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { listDocuments, deleteDocument, semanticSearch, getDocumentContent, createBatchUpload, updateBatchProgress, storeDocumentAnalysis, updateDocumentReview } from './supabase.js';
+import { listDocuments, deleteDocument, semanticSearch, getDocumentContent, createBatchUpload, updateBatchProgress, storeDocumentAnalysis, updateDocumentReview, getBatchStatus } from './supabase.js';
 import { chatWithDocument } from './chat.js';
 import { ingestDocument, parsePdf, parseDocx, parseEml, parseMsg } from './ingest.js';
 import { embedText } from './embeddings.js';
@@ -290,10 +290,125 @@ router.post('/ingest/batch', requireAuth, uploadBatch, async (req, res) => {
     processBatchAsync(
       batchId,
       files,
-      source_type || 'other',
-      case_number,
-      language || 'en'
+      typeof source_type === 'string' ? source_type : 'other',
+      typeof case_number === 'string' ? case_number : undefined,
+      typeof language === 'string' ? language : 'en'
     ).catch(err => console.error(`Batch ${batchId} failed:`, err));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── GET /api/ingest/batch/:id/status ───────────────────────────────────────
+router.get('/ingest/batch/:id/status', requireAuth, async (req, res) => {
+  const id = req.params.id as string;
+
+  try {
+    const batch = await getBatchStatus(id);
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Send initial status
+    res.write(`data: ${JSON.stringify({
+      type: 'status',
+      batch_id: id,
+      status: batch.status,
+      successful: batch.successful_count,
+      failed: batch.failed_count,
+      total_files: batch.total_files,
+    })}\n\n`);
+
+    // If batch is completed, send final event and close
+    if (batch.status === 'completed') {
+      res.write(`data: ${JSON.stringify({
+        type: 'complete',
+        batch_id: id,
+        successful: batch.successful_count,
+        failed: batch.failed_count,
+        errors: batch.errors,
+      })}\n\n`);
+      res.end();
+    } else {
+      // Poll for updates every 2 seconds (for 5 minutes max)
+      const maxPollTime = 5 * 60 * 1000; // 5 minutes
+      const startTime = Date.now();
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const updated = await getBatchStatus(id);
+
+          res.write(`data: ${JSON.stringify({
+            type: 'progress',
+            batch_id: id,
+            status: updated.status,
+            successful: updated.successful_count,
+            failed: updated.failed_count,
+            total_files: updated.total_files,
+          })}\n\n`);
+
+          if (updated.status === 'completed' || Date.now() - startTime > maxPollTime) {
+            clearInterval(pollInterval);
+            res.write(`data: ${JSON.stringify({
+              type: 'complete',
+              batch_id: id,
+              successful: updated.successful_count,
+              failed: updated.failed_count,
+              errors: updated.errors,
+            })}\n\n`);
+            res.end();
+          }
+        } catch (err) {
+          clearInterval(pollInterval);
+          res.write(`data: ${JSON.stringify({
+            type: 'error',
+            message: (err as Error).message,
+          })}\n\n`);
+          res.end();
+        }
+      }, 2000);
+
+      // Clean up on client disconnect
+      req.on('close', () => clearInterval(pollInterval));
+    }
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── POST /api/ingest/batch/:id/retry ───────────────────────────────────────
+router.post('/ingest/batch/:id/retry', requireAuth, uploadBatch, async (req, res) => {
+  const files = req.files as Express.Multer.File[] || [];
+  if (files.length === 0) {
+    res.status(400).json({ error: 'No files uploaded' });
+    return;
+  }
+
+  const { source_type, case_number, language } = req.body as {
+    source_type?: string;
+    case_number?: string;
+    language?: string;
+  };
+
+  const newBatchId = uuidv4();
+
+  try {
+    await createBatchUpload(newBatchId, files.length);
+    res.status(202).json({
+      batch_id: newBatchId,
+      message: 'Retry batch processing started',
+      total_files: files.length,
+    });
+
+    processBatchAsync(
+      newBatchId,
+      files,
+      typeof source_type === 'string' ? source_type : 'other',
+      typeof case_number === 'string' ? case_number : undefined,
+      typeof language === 'string' ? language : 'en'
+    ).catch(err => console.error(`Retry batch ${newBatchId} failed:`, err));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
