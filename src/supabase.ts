@@ -16,10 +16,12 @@ export async function upsertDocument(doc: {
   content_hash: string;
   source_type: string;
   folder?: string;
+  folder_path?: string | null;
   case_number?: string;
   document_date?: string;
   language?: string;
   total_chunks: number;
+  review_status?: string;
 }): Promise<number> {
   const { data, error } = await supabase
     .from('documents')

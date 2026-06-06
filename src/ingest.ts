@@ -8,7 +8,7 @@ export interface IngestOptions {
   filename: string;
   rawText: string;
   sourceType: SourceType;
-  folder?: string;
+  folder?: string;           // Folder path like "Case_2024/Court_Documents"
   caseNumber?: string;
   documentDate?: string;
   language?: 'en' | 'fr';
@@ -70,10 +70,12 @@ export async function ingestDocument(opts: IngestOptions): Promise<IngestResult>
     content_hash:  contentHash,
     source_type:   sourceType,
     folder:        folder,
+    folder_path:   folder || null,
     case_number:   caseNumber,
     document_date: documentDate,
     language:      language ?? 'en',
     total_chunks:  chunks.length,
+    review_status: 'pending',
   });
 
   console.error(`[ingest] Embedding ${chunks.length} chunks...`);
