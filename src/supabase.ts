@@ -141,6 +141,18 @@ export async function deleteDocument(documentId: number): Promise<void> {
   if (error) throw new Error(`deleteDocument failed: ${error.message}`);
 }
 
+export interface BatchUploadStatus {
+  id: string;
+  status: 'processing' | 'completed' | 'failed';
+  total_files: number;
+  successful_count: number;
+  failed_count: number;
+  errors: Array<{ filename: string; reason: string }> | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export async function createBatchUpload(batch_id: string, total_files: number): Promise<void> {
   const { error } = await supabase
     .from('batch_uploads')
@@ -161,7 +173,7 @@ export async function updateBatchProgress(
       successful_count,
       failed_count,
       errors,
-      status: failed_count === 0 ? 'completed' : 'completed',
+      status: failed_count === 0 ? 'completed' : 'failed',
       completed_at: new Date().toISOString(),
     })
     .eq('id', batch_id);
@@ -169,7 +181,7 @@ export async function updateBatchProgress(
   if (error) throw new Error(`Failed to update batch: ${error.message}`);
 }
 
-export async function getBatchStatus(batch_id: string): Promise<any> {
+export async function getBatchStatus(batch_id: string): Promise<BatchUploadStatus> {
   const { data, error } = await supabase
     .from('batch_uploads')
     .select('*')
@@ -177,7 +189,7 @@ export async function getBatchStatus(batch_id: string): Promise<any> {
     .single();
 
   if (error) throw new Error(`Batch not found: ${error.message}`);
-  return data;
+  return data as BatchUploadStatus;
 }
 
 export async function storeDocumentAnalysis(
@@ -199,9 +211,9 @@ export async function updateDocumentReview(
     .from('documents')
     .update({
       document_type: analysis.document_type,
-      parties: analysis.parties,
-      key_dates: analysis.key_dates,
-      risks: analysis.risks.map(r => r.flag),
+      parties: analysis.parties ?? [],
+      key_dates: analysis.key_dates ?? [],
+      risks: analysis.risks.map(r => `${r.flag} (${r.severity})`),
       urgency_level: analysis.urgency_level,
       review_status: 'completed',
       reviewed_at: new Date().toISOString(),
