@@ -321,8 +321,8 @@ router.get('/ingest/batch/:id/status', requireAuth, async (req, res) => {
       total_files: batch.total_files,
     })}\n\n`);
 
-    // If batch is completed, send final event and close
-    if (batch.status === 'completed') {
+    // If batch is completed or failed, send final event and close
+    if (batch.status === 'completed' || batch.status === 'failed') {
       res.write(`data: ${JSON.stringify({
         type: 'complete',
         batch_id: id,
@@ -349,7 +349,7 @@ router.get('/ingest/batch/:id/status', requireAuth, async (req, res) => {
             total_files: updated.total_files,
           })}\n\n`);
 
-          if (updated.status === 'completed' || Date.now() - startTime > maxPollTime) {
+          if (updated.status === 'completed' || updated.status === 'failed' || Date.now() - startTime > maxPollTime) {
             clearInterval(pollInterval);
             res.write(`data: ${JSON.stringify({
               type: 'complete',
