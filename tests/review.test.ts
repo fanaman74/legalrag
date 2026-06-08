@@ -1,61 +1,64 @@
 // tests/review.test.ts
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Mock the Anthropic SDK before importing reviewDocument
-vi.mock('@anthropic-ai/sdk', () => {
+// Mock the OpenAI SDK before importing reviewDocument
+vi.mock('openai', () => {
   return {
-    default: class MockAnthropic {
-      messages = {
-        create: vi.fn(async (params: any) => {
-          // Mock response for AI review
-          let mockResponse: any = {
-            document_type: 'contract',
-            parties: ['Company ABC', 'John Doe'],
-            key_dates: ['2024-06-01', '2024-07-01'],
-            risks: [{ flag: 'Risk detected', severity: 'medium' }],
-            urgency_level: 'medium',
-            summary: 'Employment agreement with standard terms.',
-          };
+    default: class MockOpenAI {
+      chat = {
+        completions: {
+          create: vi.fn(async (params: any) => {
+            // Mock response for AI review
+            let mockResponse: any = {
+              document_type: 'contract',
+              parties: ['Company ABC', 'John Doe'],
+              key_dates: ['2024-06-01', '2024-07-01'],
+              risks: [{ flag: 'Risk detected', severity: 'medium' }],
+              urgency_level: 'medium',
+              summary: 'Employment agreement with standard terms.',
+            };
 
-          // Adjust response based on document content for risk detection test
-          if (params.messages?.[0]?.content?.includes('CONFIDENTIALITY AGREEMENT')) {
-            mockResponse = {
-              document_type: 'agreement',
-              parties: [],
-              key_dates: [],
-              risks: [
-                { flag: 'No limitations on liability', severity: 'high' },
-                { flag: 'Unilateral termination without notice', severity: 'high' },
-                { flag: 'Missing indemnification clause', severity: 'medium' },
+            // Adjust response based on document content for risk detection test
+            if (params.messages?.[0]?.content?.includes('CONFIDENTIALITY AGREEMENT')) {
+              mockResponse = {
+                document_type: 'agreement',
+                parties: [],
+                key_dates: [],
+                risks: [
+                  { flag: 'No limitations on liability', severity: 'high' },
+                  { flag: 'Unilateral termination without notice', severity: 'high' },
+                  { flag: 'Missing indemnification clause', severity: 'medium' },
+                ],
+                urgency_level: 'high',
+                summary: 'Confidentiality agreement with significant risk factors.',
+              };
+            }
+
+            // Adjust response for simple test document
+            if (
+              params.messages?.[0]?.content?.includes('Simple test document')
+            ) {
+              mockResponse = {
+                document_type: 'other',
+                parties: [],
+                key_dates: [],
+                risks: [],
+                urgency_level: 'low',
+                summary: 'Simple test document for review.',
+              };
+            }
+
+            return {
+              choices: [
+                {
+                  message: {
+                    content: JSON.stringify(mockResponse),
+                  },
+                },
               ],
-              urgency_level: 'high',
-              summary: 'Confidentiality agreement with significant risk factors.',
             };
-          }
-
-          // Adjust response for simple test document
-          if (
-            params.messages?.[0]?.content?.includes('Simple test document')
-          ) {
-            mockResponse = {
-              document_type: 'other',
-              parties: [],
-              key_dates: [],
-              risks: [],
-              urgency_level: 'low',
-              summary: 'Simple test document for review.',
-            };
-          }
-
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(mockResponse),
-              },
-            ],
-          };
-        }),
+          }),
+        },
       };
     },
   };
