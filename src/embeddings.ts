@@ -1,39 +1,50 @@
 // src/embeddings.ts
+import { env, pipeline } from '@xenova/transformers';
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/embeddings';
-const EMBEDDING_MODEL    = 'mistralai/mistral-embed-2312'; // 1024-dimensional embeddings
+// Use ONNX models that run locally
+env.allowLocalModels = true;
+env.allowRemoteModels = true;
 
-function getOpenRouterKey(): string {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error('Missing OPENROUTER_API_KEY environment variable');
-  return key;
+// Cache the model to avoid re-initializing on every call
+let embeddingPipeline: Awaited<ReturnType<typeof pipeline>> | null = null;
+
+/**
+ * Initialize the embedding model (lazy-loaded on first use)
+ * Uses Xenova/all-MiniLM-L6-v2: 384-dimensional embeddings, fast and lightweight
+ */
+async function getEmbeddingPipeline() {
+  if (!embeddingPipeline) {
+    console.error('[embeddings] Loading Transformers.js model (this may take a moment on first run)...');
+    embeddingPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    console.error('[embeddings] Model loaded successfully');
+  }
+  return embeddingPipeline;
 }
 
-async function callEmbeddingsApi(input: string): Promise<number[]> {
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Authorization': `Bearer ${getOpenRouterKey()}`,
-    },
-    body: JSON.stringify({ model: EMBEDDING_MODEL, input }),
-  });
+/**
+ * Convert text to embedding vector using local Transformers.js model
+ * Returns 384-dimensional vector
+ */
+async function getEmbedding(text: string): Promise<number[]> {
+  try {
+    const extractor = await getEmbeddingPipeline();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (extractor as any)(text, { pooling: 'mean', normalize: true });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenRouter embeddings error (${response.status}): ${err}`);
+    // Convert to plain number array
+    const embedding = Array.from(result.data as ArrayLike<number>);
+    return embedding as number[];
+  } catch (err) {
+    throw new Error(`Embedding generation failed: ${(err as Error).message}`);
   }
-
-  const data = await response.json() as { data: Array<{ embedding: number[] }> };
-  return data.data[0].embedding;
 }
 
 /** Embed a search query (use for search_documents tool) */
 export async function embedText(text: string): Promise<number[]> {
-  return callEmbeddingsApi(text);
+  return getEmbedding(text);
 }
 
 /** Embed a document chunk (use during ingestion) */
 export async function embedDocument(text: string): Promise<number[]> {
-  return callEmbeddingsApi(text);
+  return getEmbedding(text);
 }
