@@ -1,11 +1,18 @@
 // src/review.ts
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import type { AnalysisResult } from './types.js';
 
-const client = new Anthropic();
+const client = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1',
+  defaultHeaders: {
+    'HTTP-Referer': 'https://github.com/fanaman74/legalrag',
+    'X-Title': 'Legal RAG',
+  },
+});
 
 // Constants
-const MODEL_ID = 'claude-3-5-sonnet-20241022';
+const MODEL_ID = 'openai/gpt-oss-120b:free';
 const MAX_TOKENS = 1024;
 const CONTENT_MAX_CHARS = 8000;
 
@@ -20,13 +27,13 @@ const REVIEW_PROMPT = `You are a legal document analyzer. Extract the following 
 Return ONLY valid JSON with keys: document_type, parties (array of strings), key_dates (array of YYYY-MM-DD strings), risks (array of {flag, severity}), urgency_level (string), summary (string)`;
 
 /**
- * Review a legal document using Claude AI to extract structured information.
+ * Review a legal document using OpenRouter GPT to extract structured information.
  * @param content - Document content (will be truncated to 8000 chars)
  * @returns Structured analysis with document type, parties, dates, risks, and urgency
  */
 export async function reviewDocument(content: string): Promise<AnalysisResult> {
   try {
-    const response = await client.messages.create({
+    const response = await client.chat.completions.create({
       model: MODEL_ID,
       max_tokens: MAX_TOKENS,
       messages: [
@@ -37,7 +44,7 @@ export async function reviewDocument(content: string): Promise<AnalysisResult> {
       ],
     });
 
-    const text = response.content?.[0]?.type === 'text' ? response.content?.[0]?.text : '';
+    const text = response.choices?.[0]?.message?.content ?? '';
     let analysis;
     try {
       analysis = JSON.parse(text);
